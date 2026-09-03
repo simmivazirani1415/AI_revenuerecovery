@@ -1,0 +1,17 @@
+# Secrets — never commit real credentials
+.env
+
+# Python bytecode cache
+__pycache__/
+
+# Local databases
+*.db
+
+# Virtual environment
+venv/
+
+# LLM classification cache
+llm_cache.json
+
+# macOS
+.DS_Store

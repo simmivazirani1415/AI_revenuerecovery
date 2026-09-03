@@ -1,0 +1,7 @@
+razorpay
+python-dotenv
+twilio
+openai
+google-genai
+apscheduler
+flask
