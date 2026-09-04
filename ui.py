@@ -604,6 +604,8 @@ def invoices():
     conn = db_ro()
     try:
         team = {r["person_id"]: r["name"] for r in conn.execute("SELECT person_id, name FROM team")}
+        cofounder = {r["person_id"] for r in conn.execute(
+            "SELECT person_id FROM team WHERE role LIKE 'Co-founder%'")}
         disp = disposition(conn)
         bucket = {}
         for b, ids in disp.items():
@@ -640,8 +642,8 @@ def invoices():
                 cats.add("needs")
             if not paid and dpt <= 0:
                 cats.add("inside")
-            if status == "Held for approval":
-                cats.add("waiting")
+            if status == "Held for approval" or esc_person.get(iid) in cofounder:
+                cats.add("waiting")   # awaiting your sign-off, or escalated to the co-founder
             rows.append({
                 "id": iid, "client": i["client"],
                 "revenue": REVENUE_LABEL.get(i["revenue_line"], i["revenue_line"]),
