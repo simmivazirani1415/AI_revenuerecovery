@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %} · Clients{% endblock %}
+{% block content %}
+<h1>Clients</h1>
+<p class="subtitle">Every client, scored on how they actually pay.</p>
+
+<div class="metrics">
+  {% for lbl, val, sub in metrics %}
+  <div class="metric">
+    <div class="m-lbl">{{ lbl }}</div>
+    <div class="m-val">{{ val }}</div>
+    {% if sub %}<div class="m-sub">{{ sub }}</div>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<div class="tablewrap">
+<table class="tbl">
+  <thead><tr>
+    <th style="width:200px">Client</th>
+    <th style="width:110px">Tier</th>
+    <th style="width:340px">Why this tier</th>
+    <th style="width:120px" class="num">Open</th>
+    <th style="width:120px">Revenue line</th>
+    <th style="width:130px">Owner</th>
+    <th style="width:190px">Last agent action</th>
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr class="rowlink" onclick="location.href='{{ r.link }}'">
+      <td><div style="font-weight:500">{{ r.name }}</div>
+          <div style="font-size:12px;color:var(--tmuted)">{{ r.revenue }}</div></td>
+      <td><span class="chip {{ r.tier.key }}"><span class="dot"></span>{{ r.tier.label }}</span></td>
+      <td style="font-size:13px;color:var(--tsecondary)">{{ r.why }}</td>
+      <td class="num">₹{{ r.open|inr }}</td>
+      <td style="color:var(--tsecondary)">{{ r.revenue }}</td>
+      <td>{{ r.owner }}</td>
+      <td style="color:var(--tsecondary)">{{ r.action }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<div class="caption">Showing 1–{{ n }} of {{ n }} clients</div>
+{% endblock %}

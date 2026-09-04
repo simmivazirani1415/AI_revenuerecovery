@@ -44,6 +44,7 @@ def assess(inv, tier, contacts_sent):
         inv["po_matched"] == 0
         or inv["contact_verified"] == 0
         or inv["status"] == "partially_paid"
+        or inv.get("payment_failed")   # structural: failed auto-debit / renewal
     )
     broken_promise = inv["promise_status"] == "broken"
     has_reply = bool(inv["reply_text"])
@@ -70,7 +71,9 @@ def assess(inv, tier, contacts_sent):
         reason = (f"Inside net-{terms} terms but a hard blocker is present "
                   f"(po_matched={inv['po_matched']}, "
                   f"contact_verified={inv['contact_verified']}, "
-                  f"status={inv['status']}) on Rs {outstanding:,} - at risk.")
+                  f"status={inv['status']}, "
+                  f"payment_failed={inv.get('payment_failed')}) "
+                  f"on Rs {outstanding:,} - at risk.")
     elif within_terms:
         reason = (f"Inside net-{terms} terms ({-dpt}d before due) but the client "
                   f"has replied - forward to diagnose to read the message.")

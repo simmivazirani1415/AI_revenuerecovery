@@ -70,7 +70,8 @@ def apply_referral(d, inv, names):
     return d
 
 # Client-facing sends need founder sign-off above threshold / for strategic.
-CLIENT_FACING = {"nudge", "offer_payment_plan", "ask_for_ap_contact", "ask_for_delegate"}
+CLIENT_FACING = {"nudge", "offer_payment_plan", "ask_for_ap_contact", "ask_for_delegate",
+                 "send_reauth_link"}
 
 DELEGATE_HINTS = ("on leave", "delegate", "our own client", "their own client",
                   "waiting on our")
@@ -78,7 +79,7 @@ DELEGATE_HINTS = ("on leave", "delegate", "our own client", "their own client",
 # gt_correct_action uses a finer vocabulary; fold it into the decide actions.
 GT_NORMALIZE = {
     "wait_silence": "do_nothing", "waive_late_fee": "do_nothing",
-    "fix_and_resubmit": "resubmit_via_finance", "send_reauth_link": "resubmit_via_finance",
+    "fix_and_resubmit": "resubmit_via_finance", "send_reauth_link": "send_reauth_link",
     "draft_founder_sends": "nudge", "warm_nudge": "nudge",
     "warm_nudge_cap_two": "nudge", "chase_balance_only": "nudge",
     "request_ap_contact": "ask_for_ap_contact",
@@ -166,11 +167,13 @@ def decide(inv, diagnosis, contacts_sent):
 
     # --- Base decision table ---------------------------------------------
     if diagnosis == "process_block":
-        debit = any(w in reply for w in ("auto-debit", "debit", "card"))
-        route = "meera" if debit else "rhea"
-        why = ("licence debit failure -> Product Lead, V-Suite"
-               if debit else "PO/portal/docs issue -> Finance Controller")
-        return out("resubmit_via_finance", route, why,
+        debit = inv.get("payment_failed") or any(w in reply for w in ("auto-debit", "debit", "card"))
+        if debit:
+            return out("send_reauth_link", "meera",
+                       "failed auto-debit/renewal -> Product Lead sends a re-authorisation link",
+                       "table: process_block (payment failed) -> send re-auth link")
+        return out("resubmit_via_finance", "rhea",
+                   "PO/portal/docs issue -> Finance Controller",
                    "table: process_block -> resubmit via finance")
 
     if diagnosis == "approver_bottleneck":

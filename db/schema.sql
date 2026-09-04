@@ -106,6 +106,7 @@ CREATE TABLE invoices (
     po_matched        INTEGER,                 -- 0/1/NULL
     milestone_ref     TEXT,
     contact_verified  INTEGER NOT NULL DEFAULT 1,
+    payment_failed    INTEGER NOT NULL DEFAULT 0,   -- structural failure: auto-debit/renewal
     reply_text        TEXT,                    -- latest client reply, if any
     promise_date      TEXT,                    -- date client promised to pay
     promise_status    TEXT,                    -- kept | broken | pending | NULL
@@ -193,6 +194,7 @@ SELECT
     po_matched,
     milestone_ref,
     contact_verified,
+    payment_failed,
     reply_text,
     promise_date,
     promise_status,

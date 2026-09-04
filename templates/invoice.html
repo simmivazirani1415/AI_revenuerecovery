@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %} · Invoice {{ inv.invoice_id }}{% endblock %}
+{% block content %}
+<div class="crumbs">Invoices · {{ inv.invoice_id }} · {{ client.name }}</div>
+<h1>Invoice {{ inv.invoice_id }}</h1>
+<p class="subtitle">Full decision trail and context from the receivables agent.</p>
+
+<div class="hstrip">
+  {% for lbl, val, meta in header %}
+  <div class="f">
+    <div class="lbl">{{ lbl }}</div>
+    {% if lbl == "Tier" %}
+      <div class="val"><span class="chip {{ tier.key }}"><span class="dot"></span>{{ tier.label }}</span></div>
+    {% elif lbl == "Client" %}
+      <div class="val">{{ val }} <a href="{{ url_for('clients') }}">View client →</a></div>
+    {% elif lbl == "Referred by" %}
+      <div class="val">{{ val }}{% if referrer_first %} <a href="{{ url_for('invoice', invoice_id=referrer_first) }}">↗</a>{% endif %}</div>
+    {% else %}
+      <div class="val {{ meta or '' }}">{{ val }}</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<div class="cols">
+  <div class="col-main">
+    <div class="timeline">
+      {% for s in stages %}
+      <div class="stage">
+        <span class="mk {{ s.marker }}"></span>
+        <div class="sh">{{ s.heading }}</div>
+        {% if s.ts %}<div class="sts">{{ s.ts.replace('T',' ')[:16] }}</div>{% endif %}
+        {% for b in s.blocks %}
+          {% if b.kind == 'bullets' %}
+            <div class="bodycard"><ul>{% for it in b.lines %}<li>{{ it }}</li>{% endfor %}</ul></div>
+          {% elif b.kind == 'evidence' %}
+            <div class="evidence">
+              <div class="elabel">Evidence {% if b.rules %}<span class="rtag">resolved by rules</span>{% endif %}</div>
+              <ul>{% for it in b.lines %}<li>{{ it }}</li>{% endfor %}</ul>
+            </div>
+          {% elif b.kind == 'rule' %}
+            <div class="rule">{{ b.text }}</div>
+          {% elif b.kind == 'tone' %}
+            <div class="tone">
+              <div class="tlabel">Tone</div>
+              <div class="treg">Register: {{ b.register }}</div>
+              <div class="trs">{{ b.reason }}</div>
+            </div>
+          {% elif b.kind == 'handover' %}
+            <div class="bodycard handover">
+              {% if b.reason %}<div class="hreason">{{ b.reason }}</div>{% endif %}
+              <table class="kv">
+                {% for k, v in b.rows %}<tr><td class="k">{{ k }}</td><td>{{ v }}</td></tr>{% endfor %}
+              </table>
+            </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+    {% if terminal %}
+    <div class="terminal"><span class="mk"></span>No further automated contact will be sent on this invoice.</div>
+    {% endif %}
+
+    <div class="card" id="feedback" style="margin-top:20px">
+      {% if feedback %}
+        <div class="confirm">Recorded — you marked this
+          “{{ 'Agree' if feedback.verdict=='agree' else 'Correct the agent' }}”
+          on {{ feedback.created_at.replace('T',' ')[:16] }}.</div>
+        <div class="caption">Corrections are reviewed before they change any rule.</div>
+      {% else %}
+        <h3>Was this the right call?</h3>
+        <div class="sub">Your feedback becomes a policy note, not a one-off override.</div>
+        <form method="post" action="{{ url_for('feedback') }}">
+          <input type="hidden" name="invoice_id" value="{{ inv.invoice_id }}">
+          <div class="btnrow">
+            <button class="btn" name="verdict" value="agree" type="submit">Agree</button>
+            <button class="btn primary" name="verdict" value="correct" type="submit">Correct the agent</button>
+          </div>
+          <textarea name="note" placeholder="Tell the agent what it should have done differently."></textarea>
+          <div class="caption">Corrections are reviewed before they change any rule.</div>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="col-side">
+    <div class="card">
+      <h3>Client snapshot</h3>
+      <table class="snap" style="width:100%">
+        <tr><td class="k">Tier</td><td class="v"><span class="chip {{ tier.key }}"><span class="dot"></span>{{ tier.label }}</span></td></tr>
+        {% for k, v in snapshot %}<tr><td class="k">{{ k }}</td><td class="v">{{ v }}</td></tr>{% endfor %}
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Actions <span class="planned" style="margin-left:auto">Planned</span></h3>
+      <button class="actionbtn" disabled>✉ Draft a message</button>
+      <button class="actionbtn" disabled>▦ Offer payment plan</button>
+      <button class="actionbtn" disabled>⤓ Share as PDF</button>
+      <button class="actionbtn" disabled>✓ Mark resolved</button>
+    </div>
+  </div>
+</div>
+{% endblock %}

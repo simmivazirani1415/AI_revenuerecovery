@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ product }} · Setup</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+  <nav class="nav">
+    <span class="brand">{{ product }}</span>
+    <span class="right"><span class="avatar">H</span></span>
+  </nav>
+
+  <div class="onb">
+    <div class="dots">
+      {% set titles = ["How you get paid","Upload what you have","Who handles what","Rules of engagement"] %}
+      {% for i in range(1,5) %}
+        <div class="dot-wrap">
+          <span class="dot2 {{ 'done' if i < step }} {{ 'cur' if i == step }}">{{ '✓' if i < step else i }}</span>
+          <span class="dot-lbl {{ 'cur' if i == step }}">{{ titles[i-1] }}</span>
+        </div>
+        {% if i < 4 %}<span class="dot-line"></span>{% endif %}
+      {% endfor %}
+    </div>
+
+    <div class="onb-card">
+      <div class="onb-step">Step {{ step }} of 4</div>
+
+      {% if step == 1 %}
+      <h2>How you get paid</h2>
+      <p class="subtitle">Tell us the basics so the agent understands your terms and when to act.</p>
+      <div class="onb-cols">
+        <form method="post" action="{{ url_for('onboarding_step1') }}" class="onb-form">
+          <label>Default payment terms</label>
+          <select name="payment_terms">
+            {% for t in [15,30,45,60] %}<option value="{{ t }}" {{ 'selected' if s.payment_terms == t|string }}>Net {{ t }}</option>{% endfor %}
+          </select>
+          <div class="hint">Your standard terms for most clients.</div>
+          <label>Average invoice value (₹)</label>
+          <input name="avg_invoice" value="{{ s.avg_invoice }}">
+          <div class="hint">Helps the agent gauge risk and pick the right approach.</div>
+          <label>Approval threshold (₹)</label>
+          <input name="approval_threshold" id="thr" value="{{ s.approval_threshold }}" oninput="preview()">
+          <div class="hint">The agent won't send to a client above this amount without your sign-off.</div>
+          <button class="btn cta" type="submit" style="margin-top:16px">Continue →</button>
+        </form>
+        <div class="onb-preview">
+          <div class="pv-label">PREVIEW</div>
+          <div class="pv-big" id="pv">—</div>
+          <div class="pv-body" id="pvb">Based on your current open ledger and the approval threshold.</div>
+        </div>
+      </div>
+      <script>
+        var LEDGER = {{ ledger|safe }};
+        function preview(){
+          var thr = parseFloat((document.getElementById('thr').value||'0').replace(/,/g,''))||0;
+          var need = LEDGER.filter(function(x){return x.a > thr || x.s === 1;}).length;
+          var total = LEDGER.length;
+          var pv = document.getElementById('pv'), pvb = document.getElementById('pvb');
+          if(need === 0){ pv.textContent = 'No invoices need approval'; pvb.textContent = 'At this threshold, the agent can act on everything on its own.'; return; }
+          var n = Math.max(1, Math.round(total/need));
+          pv.textContent = 'Roughly 1 in ' + n + ' invoices will need your approval';
+          pvb.textContent = need + ' of ' + total + ' open invoices exceed ₹' + thr.toLocaleString('en-IN') + ' or are strategic accounts.';
+        }
+        preview();
+      </script>
+
+      {% elif step == 2 %}
+      <h2>Upload what you have</h2>
+      <p class="subtitle">Contracts, payment terms, or past invoices — the agent will learn from them.</p>
+      <form method="post" action="{{ url_for('onboarding_upload') }}" enctype="multipart/form-data" id="upf">
+        <div class="dropzone" id="dz">
+          <div style="font-size:28px">⬆</div>
+          <div>Drop contracts, payment terms, or past invoices here</div>
+          <label class="btn" style="margin-top:10px;display:inline-block;cursor:pointer">Choose file
+            <input type="file" name="file" style="display:none" onchange="document.getElementById('upf').submit()">
+          </label>
+          <div class="hint">PDF, DOCX, XLSX, CSV</div>
+        </div>
+      </form>
+      <div style="margin-top:16px">
+        {% for u in uploads %}
+        <div class="filerow">
+          <span>📄 {{ u.filename }}</span>
+          <span class="hint">{{ (u.size/1024)|round(1) }} KB</span>
+          <span class="chip amber" style="margin-left:auto"><span class="dot"></span>Stored · parsing planned</span>
+        </div>
+        {% else %}<div class="hint">No files yet.</div>{% endfor %}
+      </div>
+      <div class="caption" style="margin-top:12px">Files are stored. Automatic extraction of payment terms is planned.</div>
+      <a class="btn cta" href="{{ url_for('onboarding', step=3) }}" style="margin-top:18px;display:inline-block">Continue →</a>
+      <script>
+        var dz=document.getElementById('dz');
+        ['dragover','dragenter'].forEach(function(e){dz.addEventListener(e,function(ev){ev.preventDefault();dz.classList.add('over');});});
+        ['dragleave','drop'].forEach(function(e){dz.addEventListener(e,function(ev){ev.preventDefault();dz.classList.remove('over');});});
+        dz.addEventListener('drop',function(ev){var inp=document.querySelector('#upf input[type=file]');inp.files=ev.dataTransfer.files;document.getElementById('upf').submit();});
+      </script>
+
+      {% elif step == 3 %}
+      <h2>Who handles what</h2>
+      <p class="subtitle">The agent escalates to the right person for each situation. Edit anytime.</p>
+      {% for m in team %}
+      <div class="teamrow">
+        <div><div style="font-weight:500">{{ m.name }}</div><div class="hint">{{ m.role }}</div></div>
+        <div class="tchips">
+          {% for t in m.types %}
+          <span class="chip" style="background:#F0F7FF;color:var(--accent)">{{ t }}
+            <form method="post" action="{{ url_for('onboarding_team') }}" style="display:inline">
+              <input type="hidden" name="pid" value="{{ m.pid }}"><input type="hidden" name="action" value="remove">
+              <input type="hidden" name="type" value="{{ t }}">
+              <button class="chip-x" type="submit" title="Remove">×</button>
+            </form>
+          </span>
+          {% endfor %}
+          <form method="post" action="{{ url_for('onboarding_team') }}" style="display:inline">
+            <input type="hidden" name="pid" value="{{ m.pid }}"><input type="hidden" name="action" value="add">
+            <input class="addchip" name="type" placeholder="+ add type">
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+      <a class="btn cta" href="{{ url_for('onboarding', step=4) }}" style="margin-top:18px;display:inline-block">Continue →</a>
+
+      {% elif step == 4 %}
+      <h2>Rules of engagement</h2>
+      <p class="subtitle">Set the boundaries for how the agent communicates and takes action.</p>
+      <form method="post" action="{{ url_for('onboarding_rules') }}">
+        {% for t in toggles %}
+        <div class="togglerow">
+          <div><div style="font-weight:500">{{ t.label }}</div><div class="hint">{{ t.desc }}</div></div>
+          <label class="switch">
+            <input type="checkbox" name="{{ t.key }}" {{ 'checked' if t.on }} onchange="this.form.submit()">
+            <span class="slider"></span>
+          </label>
+        </div>
+        {% endfor %}
+        <button class="btn cta" name="action" value="finish" type="submit" style="margin-top:18px">Finish setup →</button>
+      </form>
+      {% endif %}
+
+      <div class="onb-foot">
+        <a class="skip" href="{{ url_for('onboarding_skip') }}">Skip for now</a>
+      </div>
+    </div>
+    <div class="caption" style="text-align:center;margin-top:14px">{{ footer }}</div>
+  </div>
+</body>
+</html>

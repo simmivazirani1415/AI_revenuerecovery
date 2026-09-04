@@ -49,6 +49,13 @@ def classify(inv, client, siblings_slipping):
                 f"Rs {amount:,} invoice - PO mismatch, finance fixes and resubmits.",
                 "deterministic")
 
+    if inv.get("payment_failed"):
+        return ("process_block",
+                f"Diagnosed process_block because a scheduled payment structurally "
+                f"failed (auto-debit/renewal) on a Rs {amount:,} invoice - send a "
+                f"re-authorisation, not a chase (inside terms doesn't hide this).",
+                "deterministic")
+
     if inv["contact_verified"] == 0:
         bounced = reply and any(w in reply.lower() for w in BOUNCE_WORDS)
         extra = " and the message bounced" if bounced else ""
@@ -106,6 +113,27 @@ def classify(inv, client, siblings_slipping):
             f"Diagnosed approver_bottleneck by fallback{llm_note}: no decisive "
             f"signal; a {client['tier']} client past terms is most likely stuck "
             f"awaiting internal sign-off.", "tier_default")
+
+
+def diagnose_one(conn, invoice_id):
+    """Re-diagnose a single invoice from its current reply_text and append a
+    diagnose event. Used when an inbound reply arrives. Returns the diagnosis."""
+    r = conn.execute(
+        """SELECT ai.*, c.tier, c.promises_broken, c.name AS client_name
+           FROM agent_invoices ai JOIN clients c ON c.client_id = ai.client_id
+           WHERE ai.invoice_id = ?""", (invoice_id,)).fetchone()
+    if not r:
+        return None
+    inv = dict(r)
+    siblings = [x[0] for x in conn.execute(
+        "SELECT invoice_id FROM agent_invoices WHERE client_id = ? AND status != 'paid' "
+        "AND days_past_terms > 0 AND invoice_id != ?", (inv["client_id"], invoice_id))]
+    diagnosis, evidence, method = classify(inv, inv, siblings)
+    write_event(conn, invoice_id=invoice_id, client_id=inv["client_id"],
+                stage="diagnose", diagnosis=diagnosis, diagnosis_evidence=evidence,
+                observed={"method": method, "reply_text": inv["reply_text"],
+                          "trigger": "inbound_reply"})
+    return diagnosis, evidence, method
 
 
 def run(conn):

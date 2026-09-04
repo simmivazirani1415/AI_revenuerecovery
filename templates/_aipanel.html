@@ -1,0 +1,29 @@
+<div class="airail-body">
+  <div class="airail-sub">{{ 'Ask about this client, its invoices, or the decision.' if per_client
+                             else 'Ask about your clients, invoices, or what the agent did.' }}</div>
+
+  {% if answer %}
+  <div class="answer">
+    <div class="a-sum">{{ answer.summary }}</div>
+    {% if answer.table %}
+      <table class="a-tbl">
+        {% for row in answer.table %}{% set rown = loop.index0 %}
+        <tr>{% for cell in row %}{% if rown == 0 %}<th>{{ cell }}</th>{% else %}<td>{{ cell }}</td>{% endif %}{% endfor %}</tr>
+        {% endfor %}
+      </table>
+    {% elif answer.bullets %}
+      <ul>{% for b in answer.bullets %}<li>{{ b }}</li>{% endfor %}</ul>
+    {% endif %}
+    <div class="a-src">{{ answer.source }}</div>
+  </div>
+  {% endif %}
+
+  <div class="ai-try">Try asking</div>
+  <div class="qchips">
+    {% for key, label in chips %}
+      <a class="qchip {{ 'on' if ask == key }}" href="?ask={{ key }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+  <input class="disabled-input" placeholder="Pick a question below" disabled>
+  <div class="caption">Answers are generated from the event log. Free-text questions are planned.</div>
+</div>

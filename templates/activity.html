@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %} · Agent activity{% endblock %}
+{% block content %}
+<h1>Agent activity</h1>
+<p class="subtitle">What the agent did across {{ total }} open invoices, and what a standard
+  reminder tool would have done instead.</p>
+
+<div class="card">
+  <h3>How each invoice was handled</h3>
+  <div style="display:flex;height:48px;border-radius:8px;overflow:hidden;border:1px solid var(--border);margin:12px 0">
+    {% for s in segments %}{% if s.n %}
+    <div style="width:{{ s.pct }}%;background:{{ s.color }};display:flex;align-items:center;
+      justify-content:center;color:#fff;font-weight:600;font-size:14px"
+      title="{{ s.label }}: {{ s.n }}">{{ s.n }}</div>
+    {% endif %}{% endfor %}
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:16px 24px">
+    {% for s in segments %}
+    <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--tsecondary)">
+      <span style="width:10px;height:10px;border-radius:50%;background:{{ s.color }}"></span>
+      {{ s.label }} <span style="color:var(--tmuted)">· {{ s.n }} invoice{{ 's' if s.n != 1 }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <h3>Against a standard reminder tool</h3>
+  <div class="sub">A tool with no memory of the client, chasing everything past its due date on a 7-day cycle.</div>
+  <table class="tbl" style="border:none">
+    <thead><tr><th></th><th class="num" style="width:180px">Standard tool</th>
+      <th class="num" style="width:180px">This agent</th></tr></thead>
+    <tbody>
+    {% for label, tool, agent in cf_rows %}
+      <tr><td>{{ label }}</td>
+          <td class="num">{{ tool }}</td>
+          <td class="num" style="{{ 'color:var(--positive);font-weight:600' if agent == 0 }}">{{ agent }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div class="evidence" style="margin-top:14px"><div class="trs" style="color:var(--tsecondary)">{{ cf_note }}</div></div>
+</div>
+
+<div class="card">
+  <h3>Accuracy</h3>
+  <div class="metrics" style="margin:12px 0 0">
+    {% for lbl, val in accuracy %}
+    <div class="metric"><div class="m-lbl">{{ lbl }}</div><div class="m-val">{{ val }}</div></div>
+    {% endfor %}
+  </div>
+  <div class="caption">{{ misses }}</div>
+</div>
+
+<div class="card">
+  <h3>Escalations by owner</h3>
+  <table class="tbl" style="border:none">
+    <thead><tr><th style="width:200px">Owner</th><th style="width:220px">Role</th>
+      <th style="width:90px" class="num">Invoices</th><th>Invoice IDs</th></tr></thead>
+    <tbody>
+    {% for e in esc_rows %}
+      <tr><td style="font-weight:500">{{ e.name }}</td><td style="color:var(--tsecondary)">{{ e.role }}</td>
+          <td class="num">{{ e.n }}</td>
+          <td>{% for id in e.ids %}<a class="chip" style="background:#F0F7FF;color:var(--accent);margin:0 4px 4px 0"
+              href="{{ url_for('invoice', invoice_id=id) }}">{{ id }}</a>{% endfor %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

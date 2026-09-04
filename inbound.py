@@ -15,6 +15,7 @@ Expose: ngrok http 5001                      (paste the https URL + /webhook int
 
 from flask import Flask, request
 
+from diagnose import diagnose_one
 from log import connect, write_event
 
 app = Flask(__name__)
@@ -49,7 +50,14 @@ def webhook():
             action_taken="received_reply", channel="whatsapp",
             outcome="inbound_reply",
             observed={"direction": "inbound", "from": sender, "reply_text": body})
-        app.logger.info("Inbound from %s matched to %s: %r", sender, invoice_id, body)
+
+        # The reply is new signal: update the invoice and re-diagnose it.
+        conn.execute("UPDATE invoices SET reply_text = ? WHERE invoice_id = ?",
+                     (body, invoice_id))
+        conn.commit()
+        rediag = diagnose_one(conn, invoice_id)
+        app.logger.info("Inbound from %s matched to %s: %r -> re-diagnosed %s",
+                        sender, invoice_id, body, rediag)
     finally:
         conn.close()
 

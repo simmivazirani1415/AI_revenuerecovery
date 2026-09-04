@@ -20,9 +20,11 @@ from datetime import datetime, timedelta
 
 from log import connect, write_event
 from policy import (CONTACT_CAP, IST, MIN_HOURS_BETWEEN_CONTACTS,
-                    QUIET_HOURS_END, QUIET_HOURS_START)
+                    QUIET_HOURS_END, QUIET_HOURS_START, REFERRAL_PATIENCE_DAYS,
+                    REFERRALS_WARMER_THRESHOLD)
 
-CLIENT_FACING = {"nudge", "offer_payment_plan", "ask_for_ap_contact", "ask_for_delegate"}
+CLIENT_FACING = {"nudge", "offer_payment_plan", "ask_for_ap_contact", "ask_for_delegate",
+                 "send_reauth_link"}
 PAYMENT_ACTIONS = {"nudge", "offer_payment_plan"}
 
 HOSTILE_WORDS = ("stop chasing", "absurd", "ridiculous", "stop emailing")
@@ -70,6 +72,14 @@ def draft(action, register, name, inv_id, amount_inr, link):
             "firm": f"{name}, invoice {inv_id} ({amt}) is stuck awaiting approval. "
                     f"Please nominate a delegate to sign off.",
         },
+        "send_reauth_link": {
+            "warm": f"Hi {name} team! Aapka auto-debit fail ho gaya (invoice {inv_id}, "
+                    f"{amt}). Bas yahan dobara authorise kar dijiye - koi jaldi nahi.",
+            "neutral": f"Hello {name}, the auto-debit for invoice {inv_id} ({amt}) "
+                       f"didn't go through. Please re-authorise here.",
+            "firm": f"{name}, the auto-debit for invoice {inv_id} ({amt}) failed. "
+                    f"Please re-authorise to keep the licence active.",
+        },
     }
     body = T[action][register]
     if action in PAYMENT_ACTIONS and link:
@@ -94,6 +104,13 @@ def guardrail(inv, diagnosis, contacts_sent, last_contact, now):
     if inv["contact_verified"] == 0 and any(w in reply for w in BOUNCE_WORDS):
         return False, "hard_stop:dead_contact"
 
+    # Referral patience: a client who has referred >= N others gets +7 days
+    # before the FIRST contact goes out.
+    if (contacts_sent == 0
+            and (inv.get("referrals_made") or 0) >= REFERRALS_WARMER_THRESHOLD
+            and (inv["days_past_terms"] or 0) < REFERRAL_PATIENCE_DAYS):
+        return False, f"referral_patience:<{REFERRAL_PATIENCE_DAYS}d_past_terms"
+
     if last_contact and (now - last_contact) < timedelta(hours=MIN_HOURS_BETWEEN_CONTACTS):
         return False, "rate_limit:48h_since_last_contact"
     cap = CONTACT_CAP["strategic" if inv["segment"] == "strategic" else "standard"]
@@ -104,14 +121,32 @@ def guardrail(inv, diagnosis, contacts_sent, last_contact, now):
     return True, "passed"
 
 
-def _twilio_send(body):
+def _wa(number):
+    """Ensure a WhatsApp channel prefix (Twilio needs whatsapp:+E164)."""
+    number = (number or "").strip()
+    return number if number.startswith("whatsapp:") else "whatsapp:" + number
+
+
+def _twilio_send(body, variables):
+    """Send via Twilio. Uses the approved template (content_sid + content_variables)
+    when CONTENT_SID is set; otherwise falls back to a raw body. Returns (sid, path)."""
+    import json as _json
     import os
+    from dotenv import load_dotenv
     from twilio.rest import Client
-    client = Client(os.environ["TWILIO_SID"], os.environ["TWILIO_TOKEN"])
-    msg = client.messages.create(
-        from_=os.environ["TWILIO_WHATSAPP_FROM"],
-        to=os.environ["MY_WHATSAPP"], body=body)
-    return msg.sid
+    load_dotenv()
+    client = Client(os.environ["TWILIO_SID"].strip(), os.environ["TWILIO_TOKEN"].strip())
+    kwargs = {"from_": _wa(os.environ["TWILIO_WHATSAPP_FROM"]),
+              "to": _wa(os.environ["MY_WHATSAPP"])}
+    csid = os.getenv("CONTENT_SID", "").strip()
+    if csid:
+        kwargs["content_sid"] = csid
+        kwargs["content_variables"] = _json.dumps(variables)
+        path = "template"
+    else:
+        kwargs["body"] = body
+        path = "body"
+    return client.messages.create(**kwargs).sid, path
 
 
 def run(conn, send=False):
@@ -123,7 +158,7 @@ def run(conn, send=False):
         raise SystemExit("No decide events found - run decide.py first.")
 
     rows = {r["invoice_id"]: dict(r) for r in conn.execute(
-        """SELECT ai.*, c.name AS client_name, c.tier, c.segment
+        """SELECT ai.*, c.name AS client_name, c.tier, c.segment, c.referrals_made
            FROM agent_invoices ai JOIN clients c ON c.client_id = ai.client_id
            WHERE ai.status != 'paid'""")}
 
@@ -183,12 +218,23 @@ def run(conn, send=False):
         else:
             rec["status"], rec["detail"] = ("sent" if send else "would_send"), reason
             if send:
-                sid = _twilio_send(rec["message"])
-                write_event(conn, invoice_id=inv_id, client_id=inv["client_id"],
-                            stage="execute", action_taken="sent",
-                            message_sent=rec["message"], channel="whatsapp",
-                            outcome="sent", register=register,
-                            observed={"twilio_sid": sid})
+                variables = {"1": inv["client_name"], "2": inv_id,
+                             "3": f"₹{outstanding:,}",
+                             "4": str(max(0, inv["days_past_terms"])),
+                             "5": inv["rzp_link_url"] or ""}
+                try:
+                    sid, path = _twilio_send(rec["message"], variables)
+                    write_event(conn, invoice_id=inv_id, client_id=inv["client_id"],
+                                stage="execute", action_taken="sent",
+                                message_sent=rec["message"], channel="whatsapp",
+                                outcome="sent", register=register,
+                                observed={"twilio_sid": sid, "path": path})
+                except Exception as exc:  # one bad send must not sink the batch
+                    rec["status"], rec["detail"] = "send_failed", str(exc)[:120]
+                    write_event(conn, invoice_id=inv_id, client_id=inv["client_id"],
+                                stage="execute", action_taken="send_failed",
+                                message_sent=rec["message"], channel="none",
+                                outcome=f"send_failed: {str(exc)[:120]}", register=register)
         results.append(rec)
     return results, now
 

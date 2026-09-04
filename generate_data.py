@@ -161,7 +161,7 @@ CLIENT_BY_ID = {c["id"]: c for c in CLIENTS}
 # Referral graph: Sable referred Wren, Halcyon and Kestrel; Vantage referred Saffron.
 REFERRED_BY = {"wren": "sable", "halcyon": "sable", "kestrel": "sable",
                "saffron": "vantage"}
-REFERRALS_MADE = {"sable": 3, "vantage": 1}
+REFERRALS_MADE = {"sable": 3, "vantage": 1, "brightline": 2}
 
 
 # ---------------------------------------------------------------------------
@@ -237,6 +237,7 @@ def O(**kw):
     kw.setdefault("po_matched", None)
     kw.setdefault("milestone", None)
     kw.setdefault("contact_verified", 1)
+    kw.setdefault("payment_failed", 0)
     kw.setdefault("reply", None)
     kw.setdefault("promise_date", None)
     kw.setdefault("promise_status", None)
@@ -325,7 +326,7 @@ OPEN = [
       gt_dx="wrong_contact", gt_action="ask_once_then_escalate_flag_contact", gt_contact=1, gt_route="aditya"),
 
     # Lumen — failed auto-debit
-    O(id="INV-52", client="lumen", amount=120000, issue_ago=20,
+    O(id="INV-52", client="lumen", amount=120000, issue_ago=20, payment_failed=1,
       reply="Auto-debit failed - card on file expired.",
       gt_dx="process_block", gt_action="send_reauth_link", gt_contact=1, gt_route="meera"),
 
@@ -382,7 +383,7 @@ def build_rows():
             status="paid", paid_date=iso(paid), amount_paid_inr=p["amount"],
             days_past_terms=(paid - due).days,
             po_number=None, po_matched=None, milestone_ref=None,
-            contact_verified=1, reply_text=None,
+            contact_verified=1, payment_failed=0, reply_text=None,
             promise_date=None, promise_status=None,
             routed_to=None,
             gt_diagnosis=None, gt_correct_action=None,
@@ -406,6 +407,7 @@ def build_rows():
             days_past_terms=(REF - due).days,
             po_number=o["po"], po_matched=o["po_matched"],
             milestone_ref=o["milestone"], contact_verified=o["contact_verified"],
+            payment_failed=o["payment_failed"],
             reply_text=o["reply"], promise_date=o["promise_date"],
             promise_status=o["promise_status"],
             routed_to=c["owner"],

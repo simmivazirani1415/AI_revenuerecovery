@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %} · Configure{% endblock %}
+{% block content %}
+<h1>Configure</h1>
+<p class="subtitle">Everything you set during onboarding — change it any time. Saves immediately.</p>
+
+<div class="cfg">
+  <div class="card">
+    <h3>Payment defaults</h3>
+    <div class="sub">How the agent reads your terms and when it needs your sign-off.</div>
+    <form method="post" action="{{ url_for('onboarding_step1') }}" class="cfg-form">
+      <input type="hidden" name="next" value="{{ url_for('configure') }}">
+      <div class="cfg-field">
+        <label>Default payment terms</label>
+        <select name="payment_terms">
+          {% for t in [15,30,45,60] %}<option value="{{ t }}" {{ 'selected' if s.payment_terms == t|string }}>Net {{ t }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="cfg-field">
+        <label>Average invoice value (₹)</label>
+        <input name="avg_invoice" value="{{ s.avg_invoice }}">
+      </div>
+      <div class="cfg-field">
+        <label>Approval threshold (₹)</label>
+        <input name="approval_threshold" value="{{ s.approval_threshold }}">
+        <div class="hint">The agent won't message a client above this amount without your sign-off.</div>
+      </div>
+      <button class="btn cta" type="submit">Save defaults</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Who handles what</h3>
+    <div class="sub">Escalation types per team member. The agent routes to whoever owns the situation.</div>
+    {% for m in team %}
+    <div class="teamrow">
+      <div class="tperson"><div class="tname">{{ m.name }}</div><div class="hint">{{ m.role }}</div></div>
+      <div class="tchips">
+        {% for t in m.types %}
+        <span class="chip echip">{{ t }}
+          <form method="post" action="{{ url_for('onboarding_team') }}" style="display:inline">
+            <input type="hidden" name="next" value="{{ url_for('configure') }}">
+            <input type="hidden" name="pid" value="{{ m.pid }}"><input type="hidden" name="action" value="remove">
+            <input type="hidden" name="type" value="{{ t }}">
+            <button class="chip-x" type="submit" title="Remove">×</button>
+          </form>
+        </span>
+        {% endfor %}
+        <form method="post" action="{{ url_for('onboarding_team') }}" style="display:inline">
+          <input type="hidden" name="next" value="{{ url_for('configure') }}">
+          <input type="hidden" name="pid" value="{{ m.pid }}"><input type="hidden" name="action" value="add">
+          <input class="addchip" name="type" placeholder="+ add type">
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="card">
+    <h3>Rules of engagement</h3>
+    <div class="sub">Boundaries for how the agent communicates. Toggling saves immediately.</div>
+    <form method="post" action="{{ url_for('onboarding_rules') }}">
+      <input type="hidden" name="next" value="{{ url_for('configure') }}">
+      {% for t in toggles %}
+      <div class="togglerow">
+        <div><div class="tname">{{ t.label }}</div><div class="hint">{{ t.desc }}</div></div>
+        <label class="switch">
+          <input type="checkbox" name="{{ t.key }}" {{ 'checked' if t.on }} onchange="this.form.submit()">
+          <span class="slider"></span>
+        </label>
+      </div>
+      {% endfor %}
+    </form>
+  </div>
+</div>
+{% endblock %}

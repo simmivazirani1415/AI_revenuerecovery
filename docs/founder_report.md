@@ -1,6 +1,6 @@
 # Founder Report
 
-_Generated 2026-09-04 00:22 IST. Source: event_log + invoices (no LLM)._
+_Generated 2026-09-04 15:28 IST. Source: event_log + invoices (no LLM)._
 
 ## 1. Money at risk (current open receivables)
 
@@ -27,10 +27,10 @@ _Generated 2026-09-04 00:22 IST. Source: event_log + invoices (no LLM)._
 | metric | count |
 |---|--:|
 | invoices considered | 24 |
-| acted on (sent / routed to finance) | 9 |
-| deliberately silent (not actually late) | 4 |
-| escalated to a human | 7 |
-| held for founder approval | 4 |
+| acted on (sent / routed to finance) | 8 |
+| deliberately silent (not actually late) | 5 |
+| escalated to a human | 8 |
+| held for founder approval | 3 |
 
 ## 3. Discounts & waivers applied
 
@@ -44,6 +44,7 @@ _Generated 2026-09-04 00:22 IST. Source: event_log + invoices (no LLM)._
 
 | invoice | client | why (diagnosis) | routed to | gt match |
 |---|---|---|---|:--:|
+| INV-11 | Sable Properties | stalling | Snehal Rao | NO |
 | INV-19 | Halcyon Pharma | dispute | Snehal Rao | yes |
 | INV-33 | Trellis Infra | stalling | Aditya Menon | yes |
 | INV-34 | Trellis Infra | dispute | Karan Bhatt | yes |
@@ -52,7 +53,7 @@ _Generated 2026-09-04 00:22 IST. Source: event_log + invoices (no LLM)._
 | INV-60 | Verma & Sons Developers | cash_stress | Aditya Menon | yes |
 | INV-61 | Verma & Sons Developers | stalling | Aditya Menon | yes |
 
-7/7 escalations match gt_correct_action.
+7/8 escalations match gt_correct_action.
 
 ## 5. Worst payers this quarter
 
@@ -67,7 +68,7 @@ _Generated 2026-09-04 00:22 IST. Source: event_log + invoices (no LLM)._
 
 ## 6. Tier changes since last run
 
-_No tier changes since 2026-09-04T00:19._
+_No tier changes since 2026-09-04T00:22._
 
 ## 7. Counterfactual: naive reminder tool
 
@@ -78,11 +79,11 @@ _Naive tool = no per-client terms (chases from issue date), fixed 7-day cadence,
 | how it's handled | naive tool | the agent |
 |---|--:|--:|
 | auto-sent to client | 24 | 3 |
-| held for founder approval | 0 | 4 |
-| routed to a person (escalated) | 0 | 7 |
+| held for founder approval | 0 | 3 |
+| routed to a person (escalated) | 0 | 8 |
 | sent to finance | 0 | 4 |
-| correct silence | 0 | 4 |
-| blocked at guardrail | 0 | 2 |
+| correct silence | 0 | 5 |
+| blocked at guardrail | 0 | 1 |
 | **total messages fired at clients** (7-day cadence) | **188** | **3** |
 
 **Client-facing harm** (of messages that actually reach a client)
