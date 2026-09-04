@@ -292,3 +292,18 @@ body:not(.ai-open) .ai-fab{display:inline-flex}
 .tperson{min-width:220px}
 .tname{font-weight:500}
 .echip{background:#F0F7FF;color:var(--accent)}
+
+/* ---- Invoices ledger: filter chips + status pills ---- */
+.fchips{display:flex;gap:10px;margin:18px 0 20px;flex-wrap:wrap}
+.fchip{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);
+  border-radius:20px;padding:7px 14px;font-size:13px;color:var(--tsecondary);background:#fff}
+.fchip:hover{background:#FAFAFA;text-decoration:none}
+.fchip.on{background:#0D0D0D;color:#fff;border-color:#0D0D0D}
+.fchip .fn{font-weight:600}
+.fchip.on .fn{color:#fff}
+.spill{display:inline-block;border-radius:6px;padding:3px 9px;font-size:12px;font-weight:500}
+.spill.green{background:var(--green-bg);color:var(--green-t)}
+.spill.amber{background:var(--amber-bg);color:var(--amber-t)}
+.spill.red{background:var(--red-bg);color:var(--red-t)}
+.spill.blue{background:#F0F7FF;color:var(--accent)}
+.spill.grey{background:#F3F4F6;color:var(--tsecondary)}

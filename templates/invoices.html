@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %} · Invoices{% endblock %}
+{% block content %}
+<h1>Invoices</h1>
+<p class="subtitle">The full ledger, sorted worst-first. The agent reads it — it never creates invoices.</p>
+
+<div class="fchips">
+  {% for key, label, n in filters %}
+  <a class="fchip {{ 'on' if sel == key }}" href="{{ url_for('invoices', filter=key) }}">
+    {{ label }} <span class="fn">{{ n }}</span>
+  </a>
+  {% endfor %}
+</div>
+
+<div class="tablewrap">
+<table class="tbl">
+  <thead><tr>
+    <th style="width:96px">Invoice</th>
+    <th style="width:190px">Client</th>
+    <th style="width:120px" class="num">Amount</th>
+    <th style="width:80px">Terms</th>
+    <th style="width:130px">Days past terms</th>
+    <th style="width:180px">Status</th>
+    <th style="width:150px">Diagnosis</th>
+    <th style="width:120px">Last action</th>
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr class="rowlink" onclick="location.href='{{ url_for('invoice', invoice_id=r.id) }}'">
+      <td><a href="{{ url_for('invoice', invoice_id=r.id) }}">{{ r.id }}</a></td>
+      <td><div style="font-weight:500">{{ r.client }}</div>
+          <div style="font-size:12px;color:var(--tmuted)">{{ r.revenue }}</div></td>
+      <td class="num">₹{{ r.amount|inr }}</td>
+      <td style="color:var(--tsecondary)">Net {{ r.terms }}</td>
+      <td>{% if r.dpt > 0 %}<span style="color:var(--red-t);font-weight:500">{{ r.dpt }} days</span>
+          {% else %}<span style="color:var(--green-t)">within terms</span>{% endif %}</td>
+      <td><span class="spill {{ r.skey }}">{{ r.status }}</span></td>
+      <td style="color:var(--tmuted)">{{ r.diagnosis }}</td>
+      <td style="color:var(--tsecondary)">{{ r.when }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<div class="caption">Showing {{ rows|length }} invoice{{ 's' if rows|length != 1 }}</div>
+{% endblock %}

@@ -12,7 +12,7 @@
     <span class="brand">{{ product }}</span>
     <span class="navlinks">
       <a href="{{ url_for('clients') }}" class="{{ 'active' if active=='clients' }}">Clients</a>
-      <a href="{{ url_for('clients') }}" class="{{ 'active' if active=='invoices' }}">Invoices</a>
+      <a href="{{ url_for('invoices') }}" class="{{ 'active' if active=='invoices' }}">Invoices</a>
       <a href="{{ url_for('activity') }}" class="{{ 'active' if active=='activity' }}">Agent Activity</a>
     </span>
     <span class="right">
@@ -25,7 +25,7 @@
     <aside class="sidebar">
       <div class="side-head">{{ product }}</div>
       <a href="{{ url_for('clients') }}" class="side-item {{ 'active' if active=='clients' }}">Clients</a>
-      <a href="{{ url_for('clients') }}" class="side-item {{ 'active' if active=='invoices' }}">Invoices</a>
+      <a href="{{ url_for('invoices') }}" class="side-item {{ 'active' if active=='invoices' }}">Invoices</a>
       <a href="{{ url_for('activity') }}" class="side-item {{ 'active' if active=='activity' }}">Agent Activity</a>
       <div class="side-item disabled">Policy &amp; Rules <span class="planned">Planned</span></div>
       <a href="{{ url_for('configure') }}" class="side-item {{ 'active' if active=='configure' }}">Configure</a>

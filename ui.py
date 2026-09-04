@@ -594,6 +594,84 @@ def clients():
         conn.close()
 
 
+STATUS_STYLE = {"Paid": "green", "Left alone": "green", "Held for approval": "amber",
+                "Escalated": "red", "Blocked": "red", "Message sent": "blue",
+                "Sent to finance": "grey"}
+
+
+@app.route("/invoices")
+def invoices():
+    conn = db_ro()
+    try:
+        team = {r["person_id"]: r["name"] for r in conn.execute("SELECT person_id, name FROM team")}
+        disp = disposition(conn)
+        bucket = {}
+        for b, ids in disp.items():
+            for i in ids:
+                bucket[i] = b
+        diag = {r["invoice_id"]: r["diagnosis"] for r in conn.execute(
+            "SELECT invoice_id, diagnosis FROM event_log WHERE stage='diagnose'")}
+        esc_person = {}
+        for r in conn.execute("SELECT invoice_id, routed_to, observed FROM event_log WHERE stage='escalate'"):
+            if json.loads(r["observed"] or "{}").get("queue") == "escalation":
+                esc_person[r["invoice_id"]] = r["routed_to"]
+        latest = {r[0]: r[1] for r in conn.execute(
+            "SELECT invoice_id, MAX(timestamp) FROM event_log GROUP BY invoice_id")}
+
+        BUCKET_LABEL = {"message_sent": "Message sent", "held": "Held for approval",
+                        "finance": "Sent to finance", "left_alone": "Left alone",
+                        "blocked": "Blocked"}
+        rows = []
+        for i in conn.execute("""SELECT i.*, c.name client, c.revenue_line, c.internal_owner_id
+                                 FROM invoices i JOIN clients c ON c.client_id=i.client_id"""):
+            iid, paid = i["invoice_id"], i["status"] == "paid"
+            if paid:
+                status = "Paid"
+            elif bucket.get(iid) == "routed":
+                who = team.get(esc_person.get(iid), esc_person.get(iid, "?"))
+                status = f"Escalated to {who.split()[0] if who else '?'}"
+            else:
+                status = BUCKET_LABEL.get(bucket.get(iid), "—")
+            skey = "Escalated" if status.startswith("Escalated") else status
+            dpt = i["days_past_terms"]
+            when = rel_time(i["paid_date"]) if paid else rel_time(latest.get(iid))
+            cats = {"all"}
+            if not paid and dpt > 0:
+                cats.add("needs")
+            if not paid and dpt <= 0:
+                cats.add("inside")
+            if status == "Held for approval":
+                cats.add("waiting")
+            rows.append({
+                "id": iid, "client": i["client"],
+                "revenue": REVENUE_LABEL.get(i["revenue_line"], i["revenue_line"]),
+                "amount": i["amount_inr"], "terms": i["terms_days"], "dpt": dpt,
+                "status": status, "skey": STATUS_STYLE.get(skey, "grey"),
+                "diagnosis": diag.get(iid) or "—", "when": when or "—", "cats": cats,
+                "paid": paid,
+            })
+
+        counts = {"all": len(rows),
+                  "needs": sum(1 for r in rows if "needs" in r["cats"]),
+                  "waiting": sum(1 for r in rows if "waiting" in r["cats"]),
+                  "inside": sum(1 for r in rows if "inside" in r["cats"])}
+        filters = [("all", "All", counts["all"]), ("needs", "Needs attention", counts["needs"]),
+                   ("waiting", "Waiting on you", counts["waiting"]),
+                   ("inside", "Inside terms", counts["inside"])]
+        sel = request.args.get("filter", "all")
+        shown = [r for r in rows if sel in r["cats"]]
+        shown.sort(key=lambda r: (0 if r["paid"] else 1, r["dpt"]), reverse=True)
+
+        ctx = base_ctx(conn)
+        ask = request.args.get("ask")
+        ctx.update(active="invoices", filters=filters, sel=sel, rows=shown, wide=True,
+                   show_ai=True, chips=GLOBAL_CHIPS, per_client=False, ask=ask,
+                   answer=answer_global(conn, ask) if ask else None)
+        return render_template("invoices.html", **ctx)
+    finally:
+        conn.close()
+
+
 @app.route("/activity")
 def activity():
     conn = db_ro()
