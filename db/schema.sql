@@ -75,6 +75,9 @@ CREATE TABLE clients (
     promises_kept        INTEGER NOT NULL DEFAULT 0,
     promises_broken      INTEGER NOT NULL DEFAULT 0,
 
+    -- voice: may we place an automated voice call (rung 4 of the ladder)?
+    voice_permitted      INTEGER NOT NULL DEFAULT 0,   -- 0/1
+
     -- derived standing
     tier                 TEXT NOT NULL             -- green | amber | red (computed)
 );
@@ -168,7 +171,11 @@ CREATE TABLE event_log (
     routed_reason      TEXT,
 
     -- how this event changed the client's standing (JSON: tier/register/promises)
-    profile_delta      TEXT
+    profile_delta      TEXT,
+
+    -- voice (rung 4): the Vapi call transcript and any promise pulled from it
+    voice_transcript       TEXT,
+    voice_promise_captured TEXT                    -- e.g. 'pending 2026-09-18' or NULL
 );
 
 -- ---------------------------------------------------------------------------

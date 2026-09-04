@@ -28,6 +28,7 @@ _FIELDS = [
     "diagnosis_evidence", "decision", "rule_applied", "register",
     "register_reason", "action_taken", "message_sent", "channel",
     "outcome", "outcome_at", "routed_to", "routed_reason", "profile_delta",
+    "voice_transcript", "voice_promise_captured",
 ]
 # Structured columns stored as JSON text.
 _JSON_FIELDS = {"observed", "profile_delta"}

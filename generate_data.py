@@ -162,6 +162,8 @@ CLIENT_BY_ID = {c["id"]: c for c in CLIENTS}
 REFERRED_BY = {"wren": "sable", "halcyon": "sable", "kestrel": "sable",
                "saffron": "vantage"}
 REFERRALS_MADE = {"sable": 3, "vantage": 1, "brightline": 2}
+# Clients who have consented to an automated voice call (rung 4 of the ladder).
+VOICE_PERMITTED = {"brightline", "kestrel"}
 
 
 # ---------------------------------------------------------------------------
@@ -435,6 +437,7 @@ def build_rows():
             total_revenue_inr=c["revenue"],
             referred_by=REFERRED_BY.get(c["id"]),
             referrals_made=REFERRALS_MADE.get(c["id"], 0),
+            voice_permitted=1 if c["id"] in VOICE_PERMITTED else 0,
             invoices_paid=m["paid"], invoices_paid_late=m["late"],
             avg_days_to_pay=avg_dtp, worst_days_late=m["worst_late"],
             response_rate=c["resp"], engages_off_topic=c["off_topic"],

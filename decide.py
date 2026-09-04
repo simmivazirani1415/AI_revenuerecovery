@@ -105,7 +105,7 @@ def _register(diagnosis, tier, strategic):
     return "neutral", "amber tier, routine handling"
 
 
-def decide(inv, diagnosis, contacts_sent):
+def decide(inv, diagnosis, contacts_sent, voice_done=False):
     tier = inv["tier"]
     strategic = inv["segment"] == "strategic"
     owner = inv["internal_owner_id"]
@@ -146,6 +146,13 @@ def decide(inv, diagnosis, contacts_sent):
     # 4. contact cap reached
     cap = CONTACT_CAP["strategic" if strategic else "standard"]
     if contacts_sent >= cap:
+        # Rung 4: one automated voice call before the human handover, if the
+        # profile permits it and we haven't already voice-called or escalated.
+        if inv.get("voice_permitted") and not voice_done:
+            return out("voice_call", owner,
+                       "text cap reached, voice permitted -> Vapi voice call before human handover",
+                       f"override 4: contact cap ({cap}) reached -> voice call (rung 4)")
+        # Rung 5: human handover.
         return out("escalate", "aditya" if tier == "red" else "snehal",
                    f"{contacts_sent} contacts sent (cap {cap}) - stop sending, escalate",
                    f"override 4: contact cap ({cap}) reached -> escalate")
@@ -238,7 +245,7 @@ def run(conn):
 
     rows = [dict(r) for r in conn.execute(
         """SELECT ai.*, c.tier, c.segment, c.internal_owner_id, c.name AS client_name,
-                  c.referred_by, c.referrals_made
+                  c.referred_by, c.referrals_made, c.voice_permitted
            FROM agent_invoices ai JOIN clients c ON c.client_id = ai.client_id
            WHERE ai.status != 'paid' ORDER BY ai.invoice_id""")]
     names = {r[0]: r[1] for r in conn.execute("SELECT client_id, name FROM clients")}
