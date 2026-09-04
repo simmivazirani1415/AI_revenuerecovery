@@ -1,0 +1,4 @@
+[tool.vercel]
+# The repo exposes a Flask `app` in both ui.py (the dashboard) and inbound.py
+# (the Twilio webhook). Deploy the dashboard.
+entrypoint = "ui:app"

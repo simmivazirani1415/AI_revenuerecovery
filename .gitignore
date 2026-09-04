@@ -4,8 +4,9 @@
 # Python bytecode cache
 __pycache__/
 
-# Local databases
+# Local databases (but ship the canonical demo ledger for deployment)
 *.db
+!agency.db
 
 # Virtual environment
 venv/

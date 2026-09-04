@@ -17,7 +17,19 @@ import execute
 from policy import FOUNDER_THRESHOLD_INR
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(HERE, "agency.db")
+# On Vercel (and any serverless host) the deployment filesystem is read-only
+# except for /tmp. The ledger is bundled read-only, so copy it into /tmp on
+# cold start and run against that writable copy. Writes there are ephemeral —
+# they survive warm invocations but reset on a cold start. Locally we just use
+# the file in the project directory.
+if os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+    import shutil
+    _bundled = os.path.join(HERE, "agency.db")
+    DB_PATH = "/tmp/agency.db"
+    if os.path.exists(_bundled) and not os.path.exists(DB_PATH):
+        shutil.copy(_bundled, DB_PATH)
+else:
+    DB_PATH = os.path.join(HERE, "agency.db")
 
 DEFAULT_SETTINGS = {
     "payment_terms": "30", "avg_invoice": "500000",
@@ -944,6 +956,12 @@ def configure():
         conn.close()
 
 
-if __name__ == "__main__":
+# Runs on import so the serverless entrypoint (which never hits __main__)
+# still creates the feedback/settings/uploads tables. Idempotent.
+try:
     ensure_tables()
+except Exception:
+    pass
+
+if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5002, debug=False)
