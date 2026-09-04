@@ -16,7 +16,6 @@
     </span>
     <span class="right">
       <input class="search" placeholder="Search clients, invoices, or anything…" disabled>
-      {% if show_ai %}<button class="nav-ai" onclick="toggleAI(true)"><span>✦</span> Receivables AI</button>{% endif %}
       <span class="icon">?</span>
       <span class="avatar">H</span>
     </span>
@@ -46,6 +45,10 @@
     </div>
     {% include "_aipanel.html" %}
   </aside>
+  <button class="ai-fab" onclick="toggleAI(true)" title="Ask Receivables AI">
+    <span class="ai-fab-label">Ask Receivables AI</span>
+    <span class="ai-fab-btn">✦</span>
+  </button>
   <div class="ai-scrim" onclick="toggleAI(false)"></div>
   <script>
     function toggleAI(open){
