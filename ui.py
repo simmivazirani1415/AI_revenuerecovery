@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 
 from flask import Flask, abort, redirect, render_template, request, url_for
 
+import execute
 from policy import FOUNDER_THRESHOLD_INR
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -371,8 +372,77 @@ def answer_global(conn, key):
     return None
 
 
+QUESTION_TEXT = {
+    "worst_payers": "Who are our worst payers?", "agent_week": "What did we send this week?",
+    "overdue": "How much is genuinely overdue?", "waiting_on_me": "Which invoices are waiting on me?",
+    "broken_promise": "Has anyone broken a promise?", "what_tried": "What have we already tried?",
+    "decide_why": "What did the agent decide and why?", "keep_working": "Should we keep working with them?",
+}
+
+
+def answer_draft(conn, invoice_id):
+    """Real reminder draft: execute.draft() with the register decide chose. No hardcoding."""
+    inv = conn.execute("SELECT * FROM invoices WHERE invoice_id=?", (invoice_id,)).fetchone()
+    if not inv:
+        return {"kind": "draft", "message": None, "explain": f"No invoice {invoice_id} on the ledger."}
+    client = conn.execute("SELECT * FROM clients WHERE client_id=?", (inv["client_id"],)).fetchone()
+    dc = conn.execute("SELECT decision, register, register_reason FROM event_log "
+                      "WHERE invoice_id=? AND stage='decide'", (invoice_id,)).fetchone()
+    if not dc:
+        return {"kind": "draft", "message": None,
+                "explain": f"{invoice_id} is settled — the agent has no active decision to draft from."}
+    register = dc["register"] or "neutral"
+    outstanding = inv["amount_inr"] - inv["amount_paid_inr"]
+    message = execute.draft("nudge", register, client["name"], invoice_id, outstanding,
+                            inv["rzp_link_url"])
+    return {"kind": "draft", "message": message, "register": register,
+            "explain": f"{register.capitalize()} register — {dc['register_reason']}"}
+
+
+def ai_exchange(conn, per_client, client, invoice, ask, arg, q):
+    """Resolve one panel interaction to an exchange {kind, question, ...}. No LLM."""
+    if q:
+        return {"kind": "mocked", "question": q,
+                "text": "Free-text questions aren't wired up yet — try one of the suggestions below."}
+    if not ask:
+        return None
+    if ask == "draft":
+        iid = arg or (invoice["invoice_id"] if invoice else None)
+        if not iid:
+            return None
+        ex = answer_draft(conn, iid)
+        ex["question"] = f"Draft a reminder for {iid}"
+        return ex
+    if ask == "why_tier":
+        c = conn.execute("SELECT * FROM clients WHERE client_id=?", (arg,)).fetchone() if arg else client
+        if not c:
+            return None
+        return {"kind": "answer", "question": f"Why is {c['name']} {TIER_LABEL[c['tier']]}?",
+                "answer": answer_client(conn, c, None, "why_tier")}
+    if ask in ("worst_payers", "agent_week", "overdue", "waiting_on_me", "broken_promise"):
+        return {"kind": "answer", "question": QUESTION_TEXT.get(ask, ask),
+                "answer": answer_global(conn, ask)}
+    if ask in ("what_tried", "decide_why", "keep_working") and per_client and invoice:
+        return {"kind": "answer", "question": QUESTION_TEXT.get(ask, ask),
+                "answer": answer_client(conn, client, invoice, ask)}
+    return None
+
+
+def ai_suggestions(per_client, client, invoice):
+    if per_client and client and invoice:
+        return [(f"Why is {client['name'].split()[0]} {TIER_LABEL[client['tier']].lower()}?", "?ask=why_tier"),
+                (f"Draft a reminder for {invoice['invoice_id']}", "?ask=draft"),
+                ("What have we already tried?", "?ask=what_tried"),
+                ("Who are our worst payers?", "?ask=worst_payers")]
+    return [("Why is Kestrel red?", "?ask=why_tier&arg=kestrel"),
+            ("Who are our worst payers?", "?ask=worst_payers"),
+            ("Draft a reminder for INV-45", "?ask=draft&arg=INV-45"),
+            ("What did we send this week?", "?ask=agent_week")]
+
+
 def answer_client(conn, client, invoice, key):
-    cid, iid = client["client_id"], invoice["invoice_id"]
+    cid = client["client_id"]
+    iid = invoice["invoice_id"] if invoice else None
     if key == "why_tier":
         bl = [f"Tier: {TIER_LABEL[client['tier']]}",
               f"Promises: {client['promises_kept']} kept / {client['promises_broken']} broken "
@@ -442,9 +512,10 @@ def invoice(invoice_id):
             abort(404)
         ctx.update(base_ctx(conn))
         ctx["active"] = "invoices"
-        ask = request.args.get("ask")
-        ctx.update(show_ai=True, chips=client_chips(ctx["client"]), per_client=True, ask=ask,
-                   answer=answer_client(conn, ctx["client"], ctx["inv"], ask) if ask else None)
+        a = (request.args.get("ask"), request.args.get("arg"), request.args.get("q"))
+        ctx.update(show_ai=True, per_client=True,
+                   exchange=ai_exchange(conn, True, ctx["client"], ctx["inv"], *a),
+                   suggestions=ai_suggestions(True, ctx["client"], ctx["inv"]))
         return render_template("invoice.html", **ctx)
     finally:
         conn.close()
@@ -563,6 +634,7 @@ def clients():
             first = conn.execute("SELECT invoice_id FROM invoices WHERE client_id=? "
                                  "AND status!='paid' ORDER BY invoice_id", (c["client_id"],)).fetchone()
             rows.append({
+                "cid": c["client_id"],
                 "name": c["name"], "revenue": REVENUE_LABEL.get(c["revenue_line"], c["revenue_line"]),
                 "tier": inv_tier(c["tier"]), "why": compose_why(conn, c),
                 "open": sum(r["amount_inr"] - r["amount_paid_inr"] for r in openrows),
@@ -585,10 +657,11 @@ def clients():
             ("Agent left alone", str(len(disp["left_alone"])), "correctly, per policy"),
         ]
         ctx = base_ctx(conn)
-        ask = request.args.get("ask")
-        ctx.update(active="clients", rows=rows, metrics=metrics, n=len(rows),
-                   wide=True, show_ai=True, chips=GLOBAL_CHIPS, per_client=False, ask=ask,
-                   answer=answer_global(conn, ask) if ask else None)
+        a = (request.args.get("ask"), request.args.get("arg"), request.args.get("q"))
+        ctx.update(active="clients", rows=rows, metrics=metrics, n=len(rows), wide=True,
+                   show_ai=True, per_client=False,
+                   exchange=ai_exchange(conn, False, None, None, *a),
+                   suggestions=ai_suggestions(False, None, None))
         return render_template("clients.html", **ctx)
     finally:
         conn.close()
@@ -665,10 +738,11 @@ def invoices():
         shown.sort(key=lambda r: (0 if r["paid"] else 1, r["dpt"]), reverse=True)
 
         ctx = base_ctx(conn)
-        ask = request.args.get("ask")
+        a = (request.args.get("ask"), request.args.get("arg"), request.args.get("q"))
         ctx.update(active="invoices", filters=filters, sel=sel, rows=shown, wide=True,
-                   show_ai=True, chips=GLOBAL_CHIPS, per_client=False, ask=ask,
-                   answer=answer_global(conn, ask) if ask else None)
+                   show_ai=True, per_client=False,
+                   exchange=ai_exchange(conn, False, None, None, *a),
+                   suggestions=ai_suggestions(False, None, None))
         return render_template("invoices.html", **ctx)
     finally:
         conn.close()
@@ -746,11 +820,12 @@ def activity():
                     for pid, ids in sorted(esc.items(), key=lambda x: -len(x[1]))]
 
         ctx = base_ctx(conn)
-        ask = request.args.get("ask")
+        a = (request.args.get("ask"), request.args.get("arg"), request.args.get("q"))
         ctx.update(active="activity", segments=segments, total=total, cf_rows=cf_rows,
                    cf_note=cf_note, accuracy=accuracy, misses=misses, esc_rows=esc_rows,
-                   show_ai=True, chips=GLOBAL_CHIPS, per_client=False, ask=ask,
-                   answer=answer_global(conn, ask) if ask else None)
+                   show_ai=True, per_client=False,
+                   exchange=ai_exchange(conn, False, None, None, *a),
+                   suggestions=ai_suggestions(False, None, None))
         return render_template("activity.html", **ctx)
     finally:
         conn.close()

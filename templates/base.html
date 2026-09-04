@@ -7,7 +7,6 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
 </head>
 <body>
-  {% if show_ai %}<script>if(localStorage.getItem('aiOpen')!=='0')document.body.classList.add('ai-open');</script>{% endif %}
   <nav class="nav">
     <span class="brand">{{ product }}</span>
     <span class="navlinks">
@@ -17,6 +16,7 @@
     </span>
     <span class="right">
       <input class="search" placeholder="Search clients, invoices, or anything…" disabled>
+      {% if show_ai %}<button class="nav-ai" onclick="toggleAI(true)"><span>✦</span> Receivables AI</button>{% endif %}
       <span class="icon">?</span>
       <span class="avatar">H</span>
     </span>
@@ -41,17 +41,25 @@
   {% if show_ai %}
   <aside class="airail">
     <div class="airail-head">
-      <span class="ait"><span class="ai-star">✦</span>&nbsp;Receivables AI</span>
-      <button class="ai-close" onclick="toggleAI(false)" title="Collapse">›</button>
+      <span class="ait"><span class="ai-ava sm">✦</span> Receivables AI <span class="beta">Beta</span></span>
+      <button class="ai-close" onclick="toggleAI(false)" title="Close">×</button>
     </div>
     {% include "_aipanel.html" %}
   </aside>
-  <button class="ai-fab" onclick="toggleAI(true)"><span>✦</span> Ask Receivables AI</button>
+  <div class="ai-scrim" onclick="toggleAI(false)"></div>
   <script>
     function toggleAI(open){
       document.body.classList.toggle('ai-open', open);
       localStorage.setItem('aiOpen', open ? '1' : '0');
     }
+    function copyDraft(btn){
+      var el = btn.closest('.ai-bubble').querySelector('.draft-box');
+      if(el){ navigator.clipboard.writeText(el.textContent); btn.textContent='Copied'; setTimeout(function(){btn.textContent='Copy';},1500); }
+    }
+    (function(){
+      var q = /[?&](ask|q|arg)=/.test(location.search);
+      document.body.classList.toggle('ai-open', q || localStorage.getItem('aiOpen')==='1');
+    })();
   </script>
   {% endif %}
 </body>

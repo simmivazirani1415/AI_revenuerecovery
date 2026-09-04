@@ -28,8 +28,14 @@
   <tbody>
   {% for r in rows %}
     <tr class="rowlink" onclick="location.href='{{ r.link }}'">
-      <td><div style="font-weight:500">{{ r.name }}</div>
-          <div style="font-size:12px;color:var(--tmuted)">{{ r.revenue }}</div></td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div><div style="font-weight:500">{{ r.name }}</div>
+               <div style="font-size:12px;color:var(--tmuted)">{{ r.revenue }}</div></div>
+          <a class="rowai" title="Ask Receivables AI about {{ r.name }}"
+             href="?ask=why_tier&arg={{ r.cid }}" onclick="event.stopPropagation()">✦</a>
+        </div>
+      </td>
       <td><span class="chip {{ r.tier.key }}"><span class="dot"></span>{{ r.tier.label }}</span></td>
       <td style="font-size:13px;color:var(--tsecondary)">{{ r.why }}</td>
       <td class="num">₹{{ r.open|inr }}</td>

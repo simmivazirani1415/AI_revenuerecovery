@@ -1,29 +1,64 @@
-<div class="airail-body">
-  <div class="airail-sub">{{ 'Ask about this client, its invoices, or the decision.' if per_client
-                             else 'Ask about your clients, invoices, or what the agent did.' }}</div>
+<div class="airail-scroll">
+  <div class="ai-intro">Your AI copilot for receivables.<br>Ask questions, get instant insights, and take action.</div>
 
-  {% if answer %}
-  <div class="answer">
-    <div class="a-sum">{{ answer.summary }}</div>
-    {% if answer.table %}
-      <table class="a-tbl">
-        {% for row in answer.table %}{% set rown = loop.index0 %}
-        <tr>{% for cell in row %}{% if rown == 0 %}<th>{{ cell }}</th>{% else %}<td>{{ cell }}</td>{% endif %}{% endfor %}</tr>
-        {% endfor %}
-      </table>
-    {% elif answer.bullets %}
-      <ul>{% for b in answer.bullets %}<li>{{ b }}</li>{% endfor %}</ul>
-    {% endif %}
-    <div class="a-src">{{ answer.source }}</div>
+  <div class="cap-cards">
+    <div class="cap"><div class="cap-ico">▤</div><div class="cap-t">Get a client summary</div>
+      <div class="cap-ex">E.g. "Should we keep working with Corvid?"</div></div>
+    <div class="cap"><div class="cap-ico">▦</div><div class="cap-t">Understand risk</div>
+      <div class="cap-ex">E.g. "Why is Kestrel red?"</div></div>
+    <div class="cap"><div class="cap-ico">➤</div><div class="cap-t">Take action</div>
+      <div class="cap-ex">E.g. "Draft a reminder for INV-45"</div></div>
+  </div>
+
+  {% if exchange %}
+  <div class="ai-today">Today</div>
+  <div class="msg-user">{{ exchange.question }}</div>
+  <div class="ai-msg">
+    <span class="ai-ava">✦</span>
+    <div class="ai-bubble">
+      {% if exchange.kind == 'answer' %}
+        <div class="a-sum">{{ exchange.answer.summary }}</div>
+        {% if exchange.answer.table %}
+          <table class="a-tbl">
+            {% for row in exchange.answer.table %}{% set rown = loop.index0 %}
+            <tr>{% for cell in row %}{% if rown == 0 %}<th>{{ cell }}</th>{% else %}<td>{{ cell }}</td>{% endif %}{% endfor %}</tr>
+            {% endfor %}
+          </table>
+        {% elif exchange.answer.bullets %}
+          <ul>{% for b in exchange.answer.bullets %}<li>{{ b }}</li>{% endfor %}</ul>
+        {% endif %}
+        <div class="a-src">{{ exchange.answer.source }}</div>
+      {% elif exchange.kind == 'draft' %}
+        <div class="draft-top">
+          <span>{{ exchange.explain }}</span>
+          {% if exchange.message %}<button class="copybtn" onclick="copyDraft(this)">Copy</button>{% endif %}
+        </div>
+        {% if exchange.message %}
+          <pre class="draft-box">{{ exchange.message }}</pre>
+          <div class="ai-sa">Suggested actions</div>
+          <div class="sa-row">
+            <button class="btn sa" disabled>✉ Send via email <span class="planned">Planned</span></button>
+            <button class="btn sa" disabled>▦ Set a follow-up <span class="planned">Planned</span></button>
+          </div>
+        {% endif %}
+      {% elif exchange.kind == 'mocked' %}
+        <div class="msg-muted">{{ exchange.text }}</div>
+      {% endif %}
+    </div>
   </div>
   {% endif %}
+</div>
 
-  <div class="ai-try">Try asking</div>
+<div class="airail-foot">
   <div class="qchips">
-    {% for key, label in chips %}
-      <a class="qchip {{ 'on' if ask == key }}" href="?ask={{ key }}">{{ label }}</a>
-    {% endfor %}
+    {% for label, href in suggestions %}<a class="qchip" href="{{ href }}">{{ label }}</a>{% endfor %}
   </div>
-  <input class="disabled-input" placeholder="Pick a question below" disabled>
-  <div class="caption">Answers are generated from the event log. Free-text questions are planned.</div>
+  <form class="ai-inputrow" method="get" action="">
+    <span class="ai-clip">📎</span>
+    <input class="ai-input" name="q" autocomplete="off"
+           placeholder="Ask about a client, an invoice, or take an action…">
+    <button class="ai-send" type="submit" title="Send">➤</button>
+  </form>
+  <div class="caption">Answers and drafts are generated from the event log and the agent's own
+    drafting logic. Free-text questions and send actions are not yet wired.</div>
 </div>
