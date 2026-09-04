@@ -157,6 +157,31 @@ TONE = {
 }
 
 
+def _inr(n):
+    """Indian digit grouping: 300000 -> '3,00,000'."""
+    s = str(int(n))
+    if len(s) <= 3:
+        return s
+    head, tail = s[:-3], s[-3:]
+    head = re.sub(r"(\d)(?=(\d\d)+$)", r"\1,", head)
+    return f"{head},{tail}"
+
+
+def _amount_words(n):
+    """Spoken Indian form: 300000 -> '3 lakh rupees', 280000 -> '2 lakh 80 thousand rupees'."""
+    n = int(n)
+    lakh, rem = n // 100000, n % 100000
+    thou = rem // 1000
+    parts = []
+    if lakh:
+        parts.append(f"{lakh} lakh")
+    if thou:
+        parts.append(f"{thou} thousand")
+    if not parts:
+        parts.append(str(n))
+    return " ".join(parts) + " rupees"
+
+
 def build_vapi_prompt(invoice_id):
     conn = connect()
     try:
@@ -168,13 +193,22 @@ def build_vapi_prompt(invoice_id):
         d = decide(inv, diagnosis, inv_contacts := 0)
         register, reason = d["register"], d["register_reason"]
         outstanding = inv["amount_inr"] - inv["amount_paid_inr"]
+        amount_disp = _inr(outstanding)
+        amount_words = _amount_words(outstanding)
         history = (f"paid {inv['invoices_paid']} before, "
                    f"{inv['promises_broken']} broken / {inv['promises_kept']} kept promises, "
                    f"worst {inv['worst_days_late']}d late")
         prompt = f"""SYSTEM PROMPT — Vapi voice agent  (invoice {invoice_id})
 
-You are "Asha", an accounts assistant calling on behalf of Vantage Lab (a Mumbai
-marketing agency). You are calling {inv['client_name']}.
+You are "Asha", a female accounts assistant calling on behalf of Vantage Lab (a
+Mumbai marketing agency). You are calling {inv['client_name']}.
+
+PERSONA & LANGUAGE (do not deviate)
+  - You are a woman. Use feminine Hindi verb forms consistently — "मैं बोल रही हूँ",
+    "मैं नोट कर लूँगी", "मैं अपडेट कर दूँगी". Never use masculine forms and never say
+    both at once (no "रहा रही", no "दूँगा दूँगी", no "लेता लेती").
+  - Speak Hindi / Hinglish in Devanagari and Latin script only. Do NOT use Urdu
+    (Arabic) script at any point, even for loanwords like shukriya.
 
 WHO YOU ARE CALLING
   Client:   {inv['client_name']}  ({inv['tier']} tier, {inv['segment']} account)
@@ -182,10 +216,16 @@ WHO YOU ARE CALLING
   Owner:    internal contact is {inv['internal_owner_id']}
 
 WHY YOU ARE CALLING
-  Invoice:  {invoice_id} — ₹{outstanding:,} outstanding, {max(0, inv['days_past_terms'])} days past terms.
+  Invoice:  {invoice_id} — ₹{amount_disp} outstanding, {max(0, inv['days_past_terms'])} days past terms.
   Read:     the agent's diagnosis is "{diagnosis}".
   This is the voice rung: it follows repeated messages that went unanswered or unresolved.
   Payment link to reference if useful: {inv['rzp_link_url'] or '(none on file)'}
+
+THE AMOUNT (say it correctly)
+  The outstanding amount is exactly ₹{amount_disp} — say it as "{amount_words}".
+  State the amount at most once. Do NOT convert it, round it, drop or add zeros, or
+  restate it in a different figure. If unsure, refer to "invoice {invoice_id}" without
+  a number rather than guess.
 
 TONE — register "{register}"  ({reason})
   {TONE.get(register, TONE['neutral'])}
@@ -199,6 +239,7 @@ RULES
   - If they dispute the invoice or the work, stop pushing — acknowledge it and say it will
     be routed to their account owner. Do not argue the dispute on the call.
   - Never threaten, never raise your voice, keep the call under two minutes.
+  - Stay in the feminine, stay in Devanagari/Latin script, and keep the amount exact.
   - End by confirming the agreed date (or that there is no commitment).
 """
         return prompt

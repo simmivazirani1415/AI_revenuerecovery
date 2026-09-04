@@ -87,3 +87,10 @@ problems:**
 
 The pipeline (decide → voice brief → transcript → promise register) held up; the
 gaps are in how the voice agent is prompted and how the call is transcribed.
+
+**Fixed in `build_vapi_prompt` (prompt side):** the brief now (2) pins a single
+persona — "Asha", female, with consistent feminine forms and an explicit
+"never say both" rule — and (3) injects the exact amount (`₹3,00,000` /
+"3 lakh rupees") with a rule to state it once and never convert or restate it. For
+(1) the prompt now forbids Urdu/Arabic script and mandates Devanagari/Latin only;
+the residual STT render is still a transcriber-config item, not the prompt's.
