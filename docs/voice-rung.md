@@ -94,3 +94,25 @@ persona — "Asha", female, with consistent feminine forms and an explicit
 "3 lakh rupees") with a rule to state it once and never convert or restate it. For
 (1) the prompt now forbids Urdu/Arabic script and mandates Devanagari/Latin only;
 the residual STT render is still a transcriber-config item, not the prompt's.
+
+## Finding: voice runs in English
+
+We tested Hinglish / code-switching for the voice call. The Western (Vapi-default)
+transcriber **could not hold the code-switching cleanly** — it bled Urdu script
+into Hinglish and hedged gender on Hindi verb forms (issues 1 and 2 above). Those
+were transcriber-side, not architecture, but fighting them per-prompt was a losing
+game. So the decision: **voice now runs in professional Indian English.**
+
+- The **register system stays language-agnostic** — `decide.py` still chooses
+  warm / neutral / firm; only the spoken tone descriptor in `build_vapi_prompt`
+  changed to English (e.g. warm → *"Warm and understanding. Acknowledge the
+  pressure, don't push. Professional Indian English."*).
+- Amounts are still spoken as **English words** ("three lakh rupees") with the
+  invoice number said separately — the amount-garble defect (issue 3) stays fixed.
+- **Production would use an Indian-language speech model such as Sarvam** (built for
+  Hindi/Hinglish) to support code-switching natively; the English-only choice is a
+  transcriber limitation of this build, not a design ceiling.
+
+Recorded as a finding, not hidden: the Hinglish attempt happened, it was the
+transcriber that couldn't keep up, and the fix is a better STT — not abandoning
+vernacular calls.

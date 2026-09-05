@@ -145,15 +145,13 @@ def _latest_diagnosis(conn, invoice_id):
     return r[0] if r else None
 
 
+# Voice runs in English (see docs/live-loop-test.md — the Hinglish transcriber
+# couldn't hold code-switching). The register system stays language-agnostic; only
+# the spoken tone descriptor changes here.
 TONE = {
-    "warm": ("Warm and understanding. Acknowledge the cash pressure, do not pressure "
-             "or threaten. Offer the instalment plan as a genuine help. Hinglish is fine "
-             "if it feels natural."),
-    "neutral": ("Professional and matter-of-fact. Be clear about the invoice and the "
-                "ask; no warmth theatre, no pressure."),
-    "firm": ("Firm and direct. Make clear this has been chased repeatedly and is now "
-             "escalating internally. Offer no new concessions. Stay professional and "
-             "civil — never hostile or threatening."),
+    "warm": "Warm and understanding. Acknowledge the pressure, don't push. Professional Indian English.",
+    "neutral": "Plain and direct. State the facts, stay polite.",
+    "firm": "Firm and direct. Reference the history explicitly. Offer no new concessions.",
 }
 
 
@@ -167,43 +165,36 @@ def _inr(n):
     return f"{head},{tail}"
 
 
-# Hindi number words (Latin), 0-99 — so the agent speaks amounts, never digits.
-_HI = ["shoonya", "ek", "do", "teen", "chaar", "paanch", "chhe", "saat", "aath", "nau",
-       "das", "gyaarah", "baarah", "terah", "chaudah", "pandrah", "solah", "satrah",
-       "atharah", "unnees", "bees", "ikkees", "baees", "teyees", "chaubees", "pachchees",
-       "chhabbees", "sattaees", "atthaees", "untees", "tees", "iktees", "battees",
-       "taintees", "chauntees", "paintees", "chhattees", "saintees", "adtees", "untaalees",
-       "chaalees", "iktaalees", "bayaalees", "taintaalees", "chavaalees", "paintaalees",
-       "chhiyaalees", "saintaalees", "adtaalees", "unchaas", "pachaas", "ikyaavan", "baavan",
-       "tirepan", "chauvan", "pachpan", "chhappan", "sattaavan", "atthaavan", "unsath",
-       "saath", "iksath", "baasath", "tirsath", "chausath", "painsath", "chhiyaasath",
-       "sadsath", "adsath", "unhattar", "sattar", "ikhattar", "bahattar", "tihattar",
-       "chauhattar", "pachhattar", "chhihattar", "sathhattar", "athhattar", "unaasi", "assi",
-       "ikyaasi", "bayaasi", "tiraasi", "chauraasi", "pachaasi", "chhiyaasi", "sataasi",
-       "atthaasi", "navaasi", "nabbe", "ikyaanave", "baanave", "tiraanave", "chauraanave",
-       "pichaanave", "chhiyaanave", "sataanave", "atthaanave", "ninyaanave"]
+# English number words 0-99 — the agent speaks amounts, never digits.
+_ONES = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+         "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+         "seventeen", "eighteen", "nineteen"]
+_TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"]
 
 
-def _hi(x):
-    return _HI[x] if 0 <= x < len(_HI) else str(x)
+def _en(x):
+    if x < 20:
+        return _ONES[x]
+    tens, ones = divmod(x, 10)
+    return _TENS[tens] + (f"-{_ONES[ones]}" if ones else "")
 
 
 def _amount_words(n):
-    """Spoken Hindi words: 300000 -> 'teen lakh rupaye',
-    140000 -> 'ek lakh chaalees hazaar rupaye'. Never digits."""
+    """Spoken English words (Indian scale): 300000 -> 'three lakh rupees',
+    140000 -> 'one lakh forty thousand rupees'. Never digits."""
     n = int(n)
     lakh, rem = n // 100000, n % 100000
     thou, hund = rem // 1000, (rem % 1000) // 100
     parts = []
     if lakh:
-        parts.append(f"{_hi(lakh)} lakh")
+        parts.append(f"{_en(lakh)} lakh")
     if thou:
-        parts.append(f"{_hi(thou)} hazaar")
+        parts.append(f"{_en(thou)} thousand")
     if hund:
-        parts.append(f"{_hi(hund)} sau")
+        parts.append(f"{_en(hund)} hundred")
     if not parts:
-        parts.append(_hi(n) if n < 100 else str(n))
-    return " ".join(parts) + " rupaye"
+        parts.append(_en(n) if n < 100 else str(n))
+    return " ".join(parts) + " rupees"
 
 
 def build_vapi_prompt(invoice_id):
@@ -224,17 +215,11 @@ def build_vapi_prompt(invoice_id):
                    f"worst {inv['worst_days_late']}d late")
         prompt = f"""SYSTEM PROMPT — Vapi voice agent  (invoice {invoice_id})
 
-You are "Asha", a female accounts assistant calling on behalf of Vantage Lab (a
-Mumbai marketing agency). You are calling {inv['client_name']}.
+You are "Asha", an accounts assistant calling on behalf of Vantage Lab (a Mumbai
+marketing agency). You are calling {inv['client_name']}.
 
-PERSONA (non-negotiable)
-  - You are female. ALWAYS use feminine Hindi verb forms: करती हूँ, दूँगी, कर रही हूँ,
-    कर लूँगी, बोल रही हूँ. NEVER use masculine forms, and NEVER output both forms
-    together (never "रहा रही", never "दूँगा दूँगी", never "करता करती").
-
-SCRIPT (non-negotiable)
-  - Write ONLY in Devanagari or Latin script. NEVER use Urdu or Arabic script under
-    any circumstance — not even for loanwords like shukriya / shukriya.
+LANGUAGE
+  - Speak in professional Indian English throughout the call.
 
 WHO YOU ARE CALLING
   Client:   {inv['client_name']}  ({inv['tier']} tier, {inv['segment']} account)
@@ -252,7 +237,7 @@ THE AMOUNT (say it as words, kept separate from the invoice number)
     "{amount_disp}", and NEVER glue the invoice number to the amount (never
     "{invoice_id} lakh").
   - Say the invoice number and the amount in SEPARATE sentences. For example:
-    "यह invoice {invoice_id} के बारे में है। बकाया राशि {amount_words} है।"
+    "This is about invoice {invoice_id}. The outstanding amount is {amount_words}."
   - (For your reference only, never speak the digits: the figure is ₹{amount_disp}.)
 
 TONE — register "{register}"  ({reason})
@@ -262,16 +247,24 @@ YOUR OBJECTIVE
   Get a concrete commitment: a specific date the client will pay, and how much.
   If they cannot pay in full, and the register allows, offer to split it into instalments.
 
-RULES
-  - If they dispute the invoice or the work, stop pushing — acknowledge it and say it will
-    be routed to their account owner. Do not argue the dispute on the call.
-  - Never threaten, never raise your voice, keep the call under two minutes.
-  - Stay female, stay in Devanagari/Latin script, say the amount in words.
+CONVERSATION FLOW (follow in order; keep the whole call under two minutes)
+  1. Open — greet, say you're Asha from Vantage Lab, ask if they have a minute.
+  2. Work — briefly ask how the work/engagement is going. Keep it to one line.
+  3. Invoice — state the invoice number, then (separately) the amount in words and how
+     many days it is past terms.
+  4. Handle their response — branch on what they say:
+       - cashflow tight        -> acknowledge; if the register allows, offer instalments; get a date.
+       - blames their own client-> acknowledge the chain, but still ask for a committed date from them.
+       - paperwork problem     -> find out exactly what's missing; offer to route it to finance.
+       - dispute               -> stop pushing; say it will go to their account owner; do not argue.
+       - annoyed               -> de-escalate, keep it short, do not push.
+       - vague / no date        -> press gently, once, for a specific date.
+  5. Confirm — once they give a date, read it back EXACTLY ONCE.
+  6. Close — thank them and end. Do NOT re-confirm or re-state the amount/date after step 5.
 
-CLOSING (important)
-  - Once the client gives you a date, confirm it EXACTLY ONCE — read the date back a
-    single time — and then END the call. Do NOT repeat the confirmation a second time,
-    and do NOT re-state the amount or date again after confirming.
+RULES
+  - If they dispute the invoice or the work, stop pushing — acknowledge and route to the owner.
+  - Never threaten, never raise your voice, say the amount in words, keep it under two minutes.
 """
         return prompt
     finally:

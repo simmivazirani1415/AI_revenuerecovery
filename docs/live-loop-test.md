@@ -94,3 +94,25 @@ words from a green-tier client with a clean book would have earned a warm
 payment-plan template; from red-tier Kestrel with a second invoice sliding, it
 goes to a person. That override is the whole thesis: restraint and routing driven
 by client memory, not by the last message received.
+
+---
+
+## Finding: voice runs in English (Hinglish tested, transcriber couldn't hold it)
+
+The first voice calls were run in Hinglish to match how these conversations
+actually happen. The Western (Vapi-default) transcriber **could not hold the
+code-switching cleanly** — mid-call it bled Urdu script into the Hinglish
+transcript and hedged gender on Hindi verb forms. That's a speech-to-text
+limitation, not a pipeline one (the decide → brief → transcript → promise loop
+worked either way).
+
+Decision, recorded as a finding rather than hidden:
+
+- **Voice now runs in professional Indian English.** `build_vapi_prompt` emits
+  English tone descriptors and speaks amounts as English words ("three lakh
+  rupees"), with the invoice number said separately from the amount.
+- **The register system stays language-agnostic** — `decide.py` still picks
+  warm / neutral / firm; only the spoken descriptor changed language.
+- **Production would use an Indian-language speech model such as Sarvam** to handle
+  Hindi/Hinglish code-switching natively. English-only is a transcriber constraint
+  of this build, not a ceiling on the design.
