@@ -1059,7 +1059,7 @@ def activity():
                      ("blocked", "Blocked by a guardrail", "#F87171")]
         total = sum(len(disp[k]) for k, _, _ in seg_order)
         segments = [{"label": lbl, "color": col, "n": len(disp[k]),
-                     "pct": round(100*len(disp[k])/total, 2)} for k, lbl, col in seg_order]
+                     "pct": round(100*len(disp[k])/(total or 1), 2)} for k, lbl, col in seg_order]
 
         n0, n30 = naive(conn, 0), naive(conn, 30)
         msg_sent = disp["message_sent"]
