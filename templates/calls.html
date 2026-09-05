@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %} · Calls{% endblock %}
+{% block content %}
+<h1>Calls</h1>
+<p class="subtitle">Voice calls the agent placed, each with a founder review.</p>
+
+<div class="tablewrap">
+<table class="tbl">
+  <thead><tr>
+    <th style="width:90px">Invoice</th>
+    <th style="width:170px">Client</th>
+    <th style="width:90px">Tier</th>
+    <th style="width:140px">When</th>
+    <th style="width:90px">Duration</th>
+    <th style="width:80px">Cost</th>
+    <th style="width:90px">Register</th>
+    <th style="width:170px">Outcome</th>
+    <th style="width:110px">Promise</th>
+  </tr></thead>
+  <tbody>
+  {% for c in calls %}
+    <tr class="rowlink" onclick="location.href='{{ url_for('call_detail', event_id=c.id) }}'">
+      <td>{{ c.invoice_id }}</td>
+      <td>{{ c.client }}</td>
+      <td><span class="chip {{ c.tier }}"><span class="dot"></span>{{ c.tier }}</span></td>
+      <td style="color:var(--tsecondary)">{{ c.when }}</td>
+      <td>{{ c.duration }}</td>
+      <td>{{ c.cost }}</td>
+      <td>{{ c.register }}</td>
+      <td><span class="ochip">{{ c.outcome }}</span></td>
+      <td>{{ c.promise_date or '—' }}</td>
+    </tr>
+  {% endfor %}
+  {% if not calls %}
+    <tr><td colspan="9" class="muted" style="padding:24px;text-align:center">
+      No calls yet. Place one from an invoice's <strong>Place call</strong> button.</td></tr>
+  {% endif %}
+  </tbody>
+</table>
+</div>
+{% if calls %}<div class="caption">Showing {{ calls|length }} call{{ 's' if calls|length != 1 }}</div>{% endif %}
+{% endblock %}

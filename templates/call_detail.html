@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %} · Call {{ call.invoice_id }}{% endblock %}
+{% block content %}
+<div class="crumbs"><a href="{{ url_for('calls') }}">Calls</a> · {{ call.invoice_id }} · {{ call.client }}</div>
+<h1>Call review — {{ call.invoice_id }}</h1>
+<p class="subtitle">{{ call.client }} · <a href="{{ url_for('invoice', invoice_id=call.invoice_id) }}">invoice detail →</a></p>
+
+<div class="hstrip">
+  <div class="f"><div class="lbl">Client</div><div class="val">{{ call.client }}</div></div>
+  <div class="f"><div class="lbl">Tier</div><div class="val"><span class="chip {{ tierc.key }}"><span class="dot"></span>{{ tierc.label }}</span></div></div>
+  <div class="f"><div class="lbl">Amount</div><div class="val">₹{{ call.amount|inr }}</div></div>
+  <div class="f"><div class="lbl">Days past terms</div><div class="val">{{ call.days_past_terms }}</div></div>
+  <div class="f"><div class="lbl">Duration</div><div class="val">{{ call.duration }}</div></div>
+  <div class="f"><div class="lbl">Cost</div><div class="val">{{ call.cost }}</div></div>
+</div>
+
+<div class="cols">
+  <div class="col-main">
+    <div class="card">
+      <h3>Why this call happened</h3>
+      <div class="bodycard">{{ call.rule }}</div>
+      <div class="tone"><div class="tlabel">Register</div>{{ call.register }} — {{ call.register_reason }}</div>
+    </div>
+
+    <div class="card">
+      <h3>What the agent was told</h3>
+      <pre class="brief-box" style="max-height:340px">{{ call.brief }}</pre>
+    </div>
+
+    <div class="card">
+      <h3>Transcript</h3>
+      <div class="transcript">
+        {% for spk, text in call.turns %}
+          <div class="turn {{ spk }}">
+            <div class="who">{{ 'Agent' if spk == 'agent' else 'Client' }}</div>
+            <div class="txt">{{ text }}</div>
+          </div>
+        {% endfor %}
+        {% if not call.turns %}<div class="muted">No transcript captured.</div>{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-side">
+    <div class="card">
+      <h3>What the agent extracted</h3>
+      <table class="snap" style="width:100%">
+        <tr><td class="k">Outcome</td><td class="v">{{ call.outcome }}</td></tr>
+        <tr><td class="k">Promise</td><td class="v">{{ call.promise_date or 'No commitment given' }}</td></tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>What happened next</h3>
+      <div class="bodycard">{{ call.next.action }}{% if call.next.routed_to %} → {{ call.next.routed_to }}{% endif %}</div>
+      <div class="caption">{{ call.next.routed_reason }}</div>
+    </div>
+
+    <div class="card">
+      <h3>Review</h3>
+      <table class="snap" style="width:100%">
+        <tr><td class="k">Got a commitment?</td><td class="v">{{ 'Yes' if call.review.got_commitment else 'No' }}</td></tr>
+        <tr><td class="k">Date confirmations</td><td class="v {{ 'flag' if call.review.confirmations > 1 }}">{{ call.review.confirmations }}</td></tr>
+        <tr><td class="k">Talk ratio (agent)</td><td class="v {{ 'flag' if call.review.talk_ratio_flag }}">{{ call.review.talk_ratio }}%</td></tr>
+        <tr><td class="k">Longest agent turn</td><td class="v {{ 'flag' if call.review.longest_flag }}">{{ call.review.longest_agent_turn }} words</td></tr>
+      </table>
+      {% if call.review.improve %}
+        <div class="ai-sa">What to improve</div>
+        <ul class="improve">{% for i in call.review.improve %}<li>{{ i }}</li>{% endfor %}</ul>
+      {% else %}
+        <div class="caption" style="margin-top:8px">Nothing flagged — clean call.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

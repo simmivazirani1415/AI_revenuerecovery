@@ -423,3 +423,22 @@ body:not(.ai-open) .ai-fab{display:flex}
 .vb-status.pending{color:#B45309;}
 .vb-status.ok{color:#065F46;}
 .vb-status.err{color:#991B1B;}
+
+/* CTA secondary (not-scheduled) state */
+.voicebanner.secondary{background:var(--surface);border-left:3px solid var(--border);}
+.voicebanner.secondary .vb-head{color:var(--tprimary);}
+.vb-reason.muted{color:var(--tmuted);}
+.vb-btn.secondary{background:var(--surface);color:var(--tprimary);border:1px solid var(--border);}
+.vb-btn.secondary:hover{background:var(--divider);}
+
+/* Calls list + review */
+.ochip{display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;
+  background:var(--amber-bg);color:var(--amber-t);white-space:nowrap;}
+.transcript{display:flex;flex-direction:column;gap:8px;}
+.turn{max-width:78%;padding:8px 12px;border-radius:10px;font-size:13px;line-height:1.45;}
+.turn .who{font-size:11px;color:var(--tmuted);margin-bottom:2px;}
+.turn.agent{align-self:flex-start;background:var(--divider);border:1px solid var(--border);}
+.turn.client{align-self:flex-end;background:var(--amber-bg);border:1px solid #FDE9C8;}
+.v.flag{color:var(--red-t);font-weight:600;}
+.improve{margin:8px 0 0;padding-left:18px;}
+.improve li{font-size:13px;color:var(--tsecondary);margin-bottom:5px;}

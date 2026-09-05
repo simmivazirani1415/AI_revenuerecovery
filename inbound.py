@@ -100,7 +100,8 @@ def vapi_webhook():
         app.logger.info("vapi-webhook: no invoice_id or empty transcript; skipping")
         return ("", 200)
 
-    res = ingest_transcript(invoice_id, transcript, call_id=call.get("id"))
+    meta = {"cost": msg.get("cost"), "duration_sec": msg.get("durationSeconds")}
+    res = ingest_transcript(invoice_id, transcript, call_id=call.get("id"), meta=meta)
     app.logger.info("vapi-webhook: %s -> captured %s", invoice_id, res.get("captured"))
     # Post-call email summary — once, only when this call was newly ingested.
     if not res.get("already_ingested"):

@@ -274,7 +274,7 @@ RULES
 # ---------------------------------------------------------------------------
 # ingest_transcript
 # ---------------------------------------------------------------------------
-def ingest_transcript(invoice_id, transcript_text, call_id=None):
+def ingest_transcript(invoice_id, transcript_text, call_id=None, meta=None):
     conn = connect()
     try:
         inv = _load(conn, invoice_id)
@@ -294,12 +294,15 @@ def ingest_transcript(invoice_id, transcript_text, call_id=None):
         captured = (f"pending {promise['date']}" if promise["promised"] and promise["date"]
                     else None)
 
+        obs = {"source": "vapi", "intent": promise["intent"],
+               "date_phrase": promise["phrase"], "vapi_call_id": call_id}
+        if meta:
+            obs.update({k: v for k, v in meta.items() if v is not None})
         write_event(conn, invoice_id=invoice_id, client_id=inv["client_id"],
                     stage="execute", action_taken="voice_call", channel="voice",
                     outcome=("voice_promise_captured" if captured else "voice_no_promise"),
                     voice_transcript=transcript_text, voice_promise_captured=captured,
-                    observed={"source": "vapi", "intent": promise["intent"],
-                              "date_phrase": promise["phrase"], "vapi_call_id": call_id})
+                    observed=obs)
 
         # Update the promise register — same effect as capturing a text promise.
         if promise["promised"] and promise["date"]:

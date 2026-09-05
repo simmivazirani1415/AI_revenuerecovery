@@ -13,6 +13,7 @@
       <a href="{{ url_for('clients') }}" class="{{ 'active' if active=='clients' }}">Clients</a>
       <a href="{{ url_for('invoices') }}" class="{{ 'active' if active=='invoices' }}">Invoices</a>
       <a href="{{ url_for('activity') }}" class="{{ 'active' if active=='activity' }}">Agent Activity</a>
+      <a href="{{ url_for('calls') }}" class="{{ 'active' if active=='calls' }}">Calls</a>
     </span>
     <span class="right">
       <input class="search" placeholder="Search clients, invoices, or anything…" disabled>
@@ -26,6 +27,7 @@
       <a href="{{ url_for('clients') }}" class="side-item {{ 'active' if active=='clients' }}">Clients</a>
       <a href="{{ url_for('invoices') }}" class="side-item {{ 'active' if active=='invoices' }}">Invoices</a>
       <a href="{{ url_for('activity') }}" class="side-item {{ 'active' if active=='activity' }}">Agent Activity</a>
+      <a href="{{ url_for('calls') }}" class="side-item {{ 'active' if active=='calls' }}">Calls</a>
       <div class="side-item disabled">Policy &amp; Rules <span class="planned">Planned</span></div>
       <a href="{{ url_for('configure') }}" class="side-item {{ 'active' if active=='configure' }}">Configure</a>
     </aside>

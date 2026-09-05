@@ -15,6 +15,7 @@ from flask import Flask, abort, jsonify, redirect, render_template, request, url
 from dotenv import load_dotenv
 
 import execute
+import call_review
 from policy import FOUNDER_THRESHOLD_INR
 
 load_dotenv()  # so VAPI_* and other keys are available to the server
@@ -538,6 +539,28 @@ def _voice_reachable(conn, invoice_id):
     return decide(inv, _latest_diagnosis(conn, invoice_id), cap, voice_done=False)["action"] == "voice_call"
 
 
+def _voice_not_scheduled(conn, invoice_id):
+    """Honest reason a call isn't the agent's scheduled next step (for the CTA)."""
+    from voice_bridge import _load
+    inv = _load(conn, invoice_id)
+    if not inv or not inv.get("voice_permitted"):
+        return "voice not permitted for this client"
+    if inv["promise_status"] in ("pending", "kept") and inv["promise_date"]:
+        return f"client has an open promise until {call_review.fmt_date(inv['promise_date'])}"
+    contacts = conn.execute("SELECT COUNT(*) FROM event_log WHERE invoice_id=? AND stage='execute' "
+                            "AND outcome='sent'", (invoice_id,)).fetchone()[0]
+    from policy import CONTACT_CAP
+    cap = CONTACT_CAP["strategic" if inv["segment"] == "strategic" else "standard"]
+    if contacts < cap:
+        return f"{contacts} of {cap} contacts used"
+    latest = conn.execute("SELECT decision FROM event_log WHERE stage='decide' AND invoice_id=? "
+                          "ORDER BY event_id DESC LIMIT 1", (invoice_id,)).fetchone()
+    dec = latest[0] if latest else None
+    if dec == "escalate":
+        return "already escalated to a human"
+    return f"agent's current step is {(dec or 'do nothing').replace('_', ' ')}"
+
+
 def _voice_call_client_ids(conn):
     """Client ids with an invoice currently at voice_call — real (latest decide
     decision) plus the demo env invoice if set and reachable."""
@@ -596,8 +619,12 @@ def invoice(invoice_id):
                 "reason": f"{used} of {cap} contacts used. One call before this goes to a human.",
                 "register": d["register"], "register_reason": d["register_reason"],
             }
+        # CTA renders on EVERY invoice: primary banner when voice_call is the
+        # agent's step, else a secondary button + honest "not scheduled" reason.
+        not_scheduled = None if voice_call_ready else _voice_not_scheduled(conn, invoice_id)
         ctx.update(voice_call_ready=voice_call_ready, voice_banner=voice_banner,
-                   voice_demo=voice_call_ready and not real_voice)
+                   voice_demo=voice_call_ready and not real_voice,
+                   voice_not_scheduled=not_scheduled)
         return render_template("invoice.html", **ctx)
     finally:
         conn.close()
@@ -656,8 +683,10 @@ def place_call(invoice_id):
 
 @app.route("/voice-event/<invoice_id>", methods=["POST"])
 def voice_event(invoice_id):
-    """Log the browser-placed web call: type=placed (with Vapi call id) or
-    type=failed (with the SDK error). Honest audit either way."""
+    """Log the browser-placed web call. type=placed logs voice_call_placed (agent-
+    decided) or, when override=true, voice_call_manual_override with the founder's
+    reason. type=failed logs the SDK error. The brief that was sent is stored so
+    the call-review surface can show it. Honest audit either way."""
     from log import connect as _connect, write_event
     d = request.get_json(force=True, silent=True) or {}
     conn = _connect()
@@ -666,9 +695,17 @@ def voice_event(invoice_id):
                            (invoice_id,)).fetchone()
         client_id = cid[0] if cid else invoice_id
         if d.get("type") == "placed":
+            try:
+                from voice_bridge import build_vapi_prompt
+                brief = build_vapi_prompt(invoice_id)
+            except SystemExit:
+                brief = None
+            override = bool(d.get("override"))
             write_event(conn, invoice_id=invoice_id, client_id=client_id, stage="execute",
-                        action_taken="voice_call_placed", channel="voice", outcome="placed",
-                        observed={"source": "vapi_web_sdk", "vapi_call_id": d.get("callId")})
+                        action_taken="voice_call_manual_override" if override else "voice_call_placed",
+                        channel="voice", outcome="placed", message_sent=brief,
+                        observed={"source": "vapi_web_sdk", "vapi_call_id": d.get("callId"),
+                                  "override": override, "reason": d.get("reason")})
         else:
             write_event(conn, invoice_id=invoice_id, client_id=client_id, stage="execute",
                         action_taken="voice_call_failed", channel="none",
@@ -694,9 +731,19 @@ def call_status(call_id):
     out = {"ok": True, "status": status, "endedReason": resp.get("endedReason")}
     if status == "ended" and invoice_id:
         transcript = (resp.get("artifact") or {}).get("transcript") or resp.get("transcript") or ""
+        # Duration + cost for the review surface.
+        meta = {"cost": resp.get("cost")}
+        try:
+            s, e = resp.get("startedAt"), resp.get("endedAt")
+            if s and e:
+                from datetime import datetime as _dt
+                meta["duration_sec"] = (_dt.fromisoformat(e.replace("Z", "+00:00"))
+                                        - _dt.fromisoformat(s.replace("Z", "+00:00"))).total_seconds()
+        except Exception:
+            pass
         if transcript:
             from voice_bridge import ingest_transcript
-            res = ingest_transcript(invoice_id, transcript, call_id=call_id)
+            res = ingest_transcript(invoice_id, transcript, call_id=call_id, meta=meta)
             out["captured"] = res.get("captured")
             out["ingested"] = True
             # Fire the post-call email summary once (only when we ingested a NEW call).
@@ -713,6 +760,60 @@ def call_status(call_id):
             out["captured"] = None
             out["note"] = "call ended with no transcript"
     return jsonify(out)
+
+
+@app.route("/draft/<invoice_id>", methods=["POST"])
+def draft_message(invoice_id):
+    """Real reminder draft via execute.draft() (same as the AI panel)."""
+    conn = db_ro()
+    try:
+        r = answer_draft(conn, invoice_id)
+        return jsonify(ok=bool(r.get("message")), message=r.get("message"),
+                       explain=r.get("explain"))
+    finally:
+        conn.close()
+
+
+@app.route("/invoice/<invoice_id>/pdf")
+def invoice_pdf(invoice_id):
+    """One-page PDF of the invoice trail: header, stages + evidence + reasons, routing."""
+    from flask import Response
+    conn = db_ro()
+    try:
+        ctx = invoice_ctx(conn, invoice_id)
+        if not ctx:
+            abort(404)
+        pdf = call_review.build_invoice_pdf(ctx)
+        return Response(pdf, mimetype="application/pdf",
+                        headers={"Content-Disposition":
+                                 f"attachment; filename={invoice_id}-trail.pdf"})
+    finally:
+        conn.close()
+
+
+@app.route("/calls")
+def calls():
+    conn = db_ro()
+    try:
+        ctx = base_ctx(conn)
+        ctx.update(active="calls", calls=call_review.list_calls(conn))
+        return render_template("calls.html", **ctx)
+    finally:
+        conn.close()
+
+
+@app.route("/calls/<int:event_id>")
+def call_detail(event_id):
+    conn = db_ro()
+    try:
+        d = call_review.call_detail(conn, event_id)
+        if not d:
+            abort(404)
+        ctx = base_ctx(conn)
+        ctx.update(active="calls", call=d, tierc=inv_tier(d["tier"]))
+        return render_template("call_detail.html", **ctx)
+    finally:
+        conn.close()
 
 
 @app.route("/feedback", methods=["POST"])
