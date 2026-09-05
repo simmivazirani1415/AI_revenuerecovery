@@ -393,3 +393,29 @@ body:not(.ai-open) .ai-fab{display:flex}
   transform:translate(-50%,-50%);border-radius:50%;border:1px solid var(--accent)}
 .ai-fab-btn::before{width:74px;height:74px;opacity:.28}
 .ai-fab-btn::after{width:98px;height:98px;opacity:.14}
+
+/* Voice call — rung 4 banner, client-list dot, and brief modal */
+.voicebanner{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;
+  background:#FFFBEB;border-left:3px solid #D97706;padding:16px;border-radius:6px;margin-bottom:16px;}
+.vb-head{font-size:15px;font-weight:600;color:#7C2D12;}
+.vb-reason{font-size:13px;color:#92400E;margin-top:4px;}
+.vb-demo{color:#B45309;font-style:italic;}
+.vb-right{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:none;}
+.vb-btn{height:36px;padding:0 16px;background:#D97706;color:#fff;border:none;border-radius:6px;
+  font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
+.vb-btn:hover{background:#B45309;}
+.vb-ph{font-size:14px;}
+.vb-register{font-size:12px;color:#A16207;text-align:right;max-width:300px;line-height:1.4;}
+.voicedot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#D97706;
+  margin-left:6px;vertical-align:middle;cursor:help;}
+.modal-scrim{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;
+  align-items:center;justify-content:center;padding:24px;}
+.modal-scrim.open{display:flex;}
+.modal{background:var(--surface);border-radius:8px;max-width:640px;width:100%;max-height:80vh;
+  display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.25);}
+.modal-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px;
+  border-bottom:1px solid var(--border);font-weight:600;font-size:14px;color:var(--tprimary);}
+.modal-x{background:none;border:none;font-size:20px;cursor:pointer;color:var(--tmuted);line-height:1;}
+.brief-box{margin:0;padding:16px;overflow:auto;white-space:pre-wrap;
+  font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.5;flex:1;color:var(--tprimary);}
+.modal-foot{display:flex;align-items:center;gap:12px;padding:12px 16px;border-top:1px solid var(--border);}

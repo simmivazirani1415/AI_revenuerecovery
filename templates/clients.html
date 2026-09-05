@@ -36,7 +36,7 @@
              href="?ask=why_tier&arg={{ r.cid }}" onclick="event.stopPropagation()">✦</a>
         </div>
       </td>
-      <td><span class="chip {{ r.tier.key }}"><span class="dot"></span>{{ r.tier.label }}</span></td>
+      <td><span class="chip {{ r.tier.key }}"><span class="dot"></span>{{ r.tier.label }}</span>{% if r.voice_call %}<span class="voicedot" title="Awaiting final call"></span>{% endif %}</td>
       <td style="font-size:13px;color:var(--tsecondary)">{{ r.why }}</td>
       <td class="num">₹{{ r.open|inr }}</td>
       <td style="color:var(--tsecondary)">{{ r.revenue }}</td>

@@ -22,6 +22,19 @@
   {% endfor %}
 </div>
 
+{% if voice_call_ready %}
+<div class="voicebanner">
+  <div class="vb-left">
+    <div class="vb-head">Final automated attempt — voice call</div>
+    <div class="vb-reason">{{ voice_banner.reason }}{% if voice_demo %} <em class="vb-demo">(demo)</em>{% endif %}</div>
+  </div>
+  <div class="vb-right">
+    <button class="vb-btn" onclick="placeCall()"><span class="vb-ph">📞</span> Place call</button>
+    <div class="vb-register">{{ voice_banner.register }} register — {{ voice_banner.register_reason }}</div>
+  </div>
+</div>
+{% endif %}
+
 <div class="cols">
   <div class="col-main">
     <div class="timeline">
@@ -94,49 +107,48 @@
     </div>
 
     <div class="card">
-      <h3>Actions {% if not voice_call_ready %}<span class="planned" style="margin-left:auto">Planned</span>{% endif %}</h3>
-      {% if voice_call_ready %}
-        <button class="actionbtn" id="call-now" onclick="callClientNow()">📞 Call client now</button>
-        <div id="voice-status" class="caption" style="margin-top:8px">Voice is the agent's next step (rung 4) — click to open a web call.{% if voice_demo %} <em>(demo toggle)</em>{% endif %}</div>
-      {% else %}
-        <button class="actionbtn" disabled>✉ Draft a message</button>
-        <button class="actionbtn" disabled>▦ Offer payment plan</button>
-        <button class="actionbtn" disabled>⤓ Share as PDF</button>
-        <button class="actionbtn" disabled>✓ Mark resolved</button>
-      {% endif %}
+      <h3>Actions <span class="planned" style="margin-left:auto">Planned</span></h3>
+      <button class="actionbtn" disabled>✉ Draft a message</button>
+      <button class="actionbtn" disabled>▦ Offer payment plan</button>
+      <button class="actionbtn" disabled>⤓ Share as PDF</button>
+      <button class="actionbtn" disabled>✓ Mark resolved</button>
     </div>
   </div>
 </div>
 
 {% if voice_call_ready %}
-<script type="module">
-  // Web call, no phone. PUBLIC key + assistant id only reach the browser; the
-  // API/private key stays server-side (used by /voice/start).
+<div id="brief-modal" class="modal-scrim" onclick="if(event.target===this)closeBrief()">
+  <div class="modal">
+    <div class="modal-head">
+      <span>Call brief generated. Paste into Vapi to place the call.</span>
+      <button class="modal-x" onclick="closeBrief()" title="Close">×</button>
+    </div>
+    <pre id="brief-text" class="brief-box"></pre>
+    <div class="modal-foot">
+      <button class="vb-btn" onclick="copyBrief(this)">Copy</button>
+      <span class="caption">The actual Vapi trigger is manual in this build.</span>
+    </div>
+  </div>
+</div>
+<script>
   const INVOICE = "{{ inv.invoice_id }}";
-  const s = () => document.getElementById("voice-status");
-  let vapi = null, active = false;
-
-  window.callClientNow = async function () {
-    const btn = document.getElementById("call-now");
-    if (active) { vapi && vapi.stop(); return; }
+  const DEMO = {{ 'true' if voice_demo else 'false' }};
+  window.placeCall = async function () {
+    const btn = document.querySelector(".vb-btn");
+    const old = btn.textContent; btn.textContent = "Generating…"; btn.disabled = true;
     try {
-      s().textContent = "composing brief & preparing assistant…";
-      btn.disabled = true;
-      // Server builds the per-invoice prompt, updates the assistant + webhook,
-      // logs voice_call_initiated, and returns only the public config.
-      const r = await fetch(`/voice/start/${INVOICE}`, { method: "POST" });
-      const cfg = await r.json();
-      if (!cfg.ok) { s().textContent = "server error: " + (cfg.error || "unknown"); btn.disabled = false; return; }
-      if (cfg.warning) console.warn(cfg.warning);
-
-      const mod = await import("https://esm.sh/@vapi-ai/web@2");
-      vapi = new mod.default(cfg.publicKey);           // public key drives the Web SDK
-      vapi.on("call-start", () => { active = true; btn.textContent = "■ End call"; btn.disabled = false; s().textContent = "● in web call — speak to the client"; });
-      vapi.on("call-end", () => { active = false; btn.textContent = "📞 Call client now"; s().textContent = "call ended — transcript will post to the webhook and close the loop"; });
-      vapi.on("error", (e) => { s().textContent = "error: " + (e?.message || e); btn.disabled = false; });
-      s().textContent = "connecting…";
-      await vapi.start(cfg.assistantId);
-    } catch (e) { s().textContent = "error: " + e.message; btn.disabled = false; }
+      const r = await fetch(`/voice/brief/${INVOICE}` + (DEMO ? "?demo=1" : ""), { method: "POST" });
+      const d = await r.json();
+      if (!d.ok) { alert("Error: " + (d.error || "unknown")); return; }
+      document.getElementById("brief-text").textContent = d.prompt;
+      document.getElementById("brief-modal").classList.add("open");
+    } catch (e) { alert("Error: " + e.message); }
+    finally { btn.textContent = old; btn.disabled = false; }
+  };
+  window.closeBrief = function () { document.getElementById("brief-modal").classList.remove("open"); };
+  window.copyBrief = function (b) {
+    navigator.clipboard.writeText(document.getElementById("brief-text").textContent)
+      .then(() => { b.textContent = "Copied"; setTimeout(() => b.textContent = "Copy", 1500); });
   };
 </script>
 {% endif %}
