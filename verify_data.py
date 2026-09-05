@@ -14,6 +14,8 @@ Prints:
 import os
 import sqlite3
 
+from policy import FOUNDER_THRESHOLD_INR   # single source of truth for the threshold
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(HERE, "agency.db")
 
@@ -145,8 +147,8 @@ def main():
          has(lambda i: i["promise_status"] == "broken")),
         ("Cash-stress signal",
          has(lambda i: reply(i, "cash"))),
-        ("Above approval threshold (Rs 40,000), open",
-         has(lambda i: i["status"] != "paid" and i["amount_inr"] > 40000)),
+        (f"Above approval threshold (Rs {FOUNDER_THRESHOLD_INR:,}), open",
+         has(lambda i: i["status"] != "paid" and i["amount_inr"] > FOUNDER_THRESHOLD_INR)),
         ("Late-fee waiver earned (flagged before due)",
          has(lambda i: i["days_past_terms"] is not None
              and i["days_past_terms"] < 0 and reply(i, "may run", "may be late"))),
