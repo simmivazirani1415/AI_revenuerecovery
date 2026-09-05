@@ -699,6 +699,16 @@ def call_status(call_id):
             res = ingest_transcript(invoice_id, transcript, call_id=call_id)
             out["captured"] = res.get("captured")
             out["ingested"] = True
+            # Fire the post-call email summary once (only when we ingested a NEW call).
+            if not res.get("already_ingested"):
+                from email_summary import send as send_summary
+                from log import connect as _c
+                ec = _c()
+                try:
+                    er = send_summary(ec, invoice_id)
+                    out["emailed"] = er.get("sent")
+                finally:
+                    ec.close()
         else:
             out["captured"] = None
             out["note"] = "call ended with no transcript"

@@ -471,7 +471,8 @@ def main():
         conn.executescript(schema_sql)
         conn.executemany(
             "INSERT INTO team (person_id, name, role, service_line, "
-            "handles_escalation_types) VALUES (?, ?, ?, ?, ?)", TEAM)
+            "handles_escalation_types, email) VALUES (?, ?, ?, ?, ?, ?)",
+            [(*t, f"{t[0]}@example.com") for t in TEAM])
         insert_dicts(conn, "clients", client_rows)
         insert_dicts(conn, "invoices", invoice_rows)
         conn.commit()

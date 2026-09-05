@@ -13,11 +13,14 @@ Run:   ./venv/bin/python inbound.py         (listens on :5001)
 Expose: ngrok http 5001                      (paste the https URL + /webhook into Twilio)
 """
 
+from dotenv import load_dotenv
 from flask import Flask, request
 
 from diagnose import diagnose_one
 from log import connect, write_event
 from voice_bridge import ingest_transcript
+
+load_dotenv()  # so RESEND_API_KEY etc. are available for the post-call email
 
 app = Flask(__name__)
 
@@ -99,6 +102,14 @@ def vapi_webhook():
 
     res = ingest_transcript(invoice_id, transcript, call_id=call.get("id"))
     app.logger.info("vapi-webhook: %s -> captured %s", invoice_id, res.get("captured"))
+    # Post-call email summary — once, only when this call was newly ingested.
+    if not res.get("already_ingested"):
+        from email_summary import send as send_summary
+        ec = connect()
+        try:
+            send_summary(ec, invoice_id)
+        finally:
+            ec.close()
     return ("", 200)
 
 

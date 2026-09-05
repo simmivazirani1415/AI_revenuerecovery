@@ -25,7 +25,8 @@ CREATE TABLE team (
     name                     TEXT NOT NULL,      -- 'Rhea Kapadia'
     role                     TEXT NOT NULL,      -- 'Finance Controller'
     service_line             TEXT,               -- 'Finance', 'V-Suite', ...
-    handles_escalation_types TEXT                -- comma-separated escalation tags
+    handles_escalation_types TEXT,               -- comma-separated escalation tags
+    email                    TEXT                -- routing address (example.com in this build)
 );
 
 -- ---------------------------------------------------------------------------

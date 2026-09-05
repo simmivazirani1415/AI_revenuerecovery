@@ -5,3 +5,4 @@ openai
 google-genai
 apscheduler
 flask
+resend
