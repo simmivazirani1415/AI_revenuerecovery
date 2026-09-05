@@ -603,31 +603,106 @@ def invoice(invoice_id):
         conn.close()
 
 
-@app.route("/voice/brief/<invoice_id>", methods=["POST"])
-def voice_brief(invoice_id):
-    """Generate the per-invoice call brief for manual paste into Vapi (the actual
-    Vapi trigger is manual in this build). Returns the brief text; in real (non-
-    demo) mode it also logs a voice_call_initiated event with the brief so a later
-    end-of-call webhook maps back to this invoice. Demo mode writes nothing."""
-    from voice_bridge import build_vapi_prompt
-    from log import connect as _connect, write_event
+def _vapi(method, path, api_key, body=None, timeout=25):
+    """Call the Vapi REST API. Returns (status_code, parsed_json_or_text)."""
+    import urllib.request, urllib.error
+    url = "https://api.vapi.ai" + path
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(url, data=data, method=method,
+                                 headers={"Authorization": f"Bearer {api_key}",
+                                          "Content-Type": "application/json",
+                                          "User-Agent": "receivables-agent/1.0",
+                                          "Accept": "application/json"})
     try:
-        prompt = build_vapi_prompt(invoice_id)
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status, json.loads(r.read().decode() or "{}")
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode("utf-8", "ignore")[:500]
+    except Exception as e:  # timeouts, DNS, etc.
+        return 0, str(e)
+
+
+@app.route("/place-call/<invoice_id>", methods=["POST"])
+def place_call(invoice_id):
+    """Prepare a real Vapi WEB call (no phone number). Vapi's server POST /call
+    requires a phone number, so a no-number web call is placed by the browser Web
+    SDK (public key). This builds the per-invoice brief and returns it as an
+    assistant-model override (preserving the assistant's provider/model) plus the
+    public key + assistant id for the SDK. The call itself is logged once the
+    browser reports its Vapi call id (see /voice-event)."""
+    api_key = os.environ.get("VAPI_API_KEY") or os.environ.get("VAPI_PRIVATE_KEY", "")
+    assistant_id = os.environ.get("VAPI_ASSISTANT_ID", "")
+    if not VAPI_PUBLIC_KEY or not assistant_id:
+        return jsonify(ok=False, error="VAPI_PUBLIC_KEY / VAPI_ASSISTANT_ID not configured"), 400
+
+    from voice_bridge import build_vapi_prompt
+    try:
+        brief = build_vapi_prompt(invoice_id)
     except SystemExit as e:
         return jsonify(ok=False, error=str(e)), 404
 
-    if request.args.get("demo") != "1":   # keep the demo non-mutating
-        conn = _connect()
-        try:
-            cid = conn.execute("SELECT client_id FROM invoices WHERE invoice_id=?",
-                               (invoice_id,)).fetchone()
-            write_event(conn, invoice_id=invoice_id, client_id=cid[0] if cid else invoice_id,
-                        stage="execute", action_taken="voice_call_initiated", channel="voice",
-                        outcome="brief_generated", message_sent=prompt,
-                        observed={"source": "manual_paste"})
-        finally:
-            conn.close()
-    return jsonify(ok=True, prompt=prompt)
+    # Preserve the assistant's own model config; override ONLY its system prompt so
+    # the call uses live client state. (Vapi requires model.provider on overrides.)
+    model_override = {"provider": "openai", "model": "gpt-4o"}
+    if api_key:
+        gcode, gassist = _vapi("GET", f"/assistant/{assistant_id}", api_key)
+        if gcode == 200 and isinstance(gassist, dict) and isinstance(gassist.get("model"), dict):
+            model_override = dict(gassist["model"])
+    model_override["messages"] = [{"role": "system", "content": brief}]
+
+    return jsonify(ok=True, publicKey=VAPI_PUBLIC_KEY, assistantId=assistant_id,
+                   assistantOverrides={"model": model_override})
+
+
+@app.route("/voice-event/<invoice_id>", methods=["POST"])
+def voice_event(invoice_id):
+    """Log the browser-placed web call: type=placed (with Vapi call id) or
+    type=failed (with the SDK error). Honest audit either way."""
+    from log import connect as _connect, write_event
+    d = request.get_json(force=True, silent=True) or {}
+    conn = _connect()
+    try:
+        cid = conn.execute("SELECT client_id FROM invoices WHERE invoice_id=?",
+                           (invoice_id,)).fetchone()
+        client_id = cid[0] if cid else invoice_id
+        if d.get("type") == "placed":
+            write_event(conn, invoice_id=invoice_id, client_id=client_id, stage="execute",
+                        action_taken="voice_call_placed", channel="voice", outcome="placed",
+                        observed={"source": "vapi_web_sdk", "vapi_call_id": d.get("callId")})
+        else:
+            write_event(conn, invoice_id=invoice_id, client_id=client_id, stage="execute",
+                        action_taken="voice_call_failed", channel="none",
+                        outcome="sdk_error", observed={"source": "vapi_web_sdk",
+                                                       "error": str(d.get("detail"))[:300]})
+    finally:
+        conn.close()
+    return jsonify(ok=True)
+
+
+@app.route("/call-status/<call_id>")
+def call_status(call_id):
+    """Poll a Vapi call. When it ends, fetch the transcript and run it through
+    ingest_transcript (idempotent) so the promise lands with no manual paste."""
+    api_key = os.environ.get("VAPI_API_KEY") or os.environ.get("VAPI_PRIVATE_KEY", "")
+    invoice_id = request.args.get("invoice", "")
+    code, resp = _vapi("GET", f"/call/{call_id}", api_key)
+    if code != 200 or not isinstance(resp, dict):
+        return jsonify(ok=False, error=f"Vapi returned {code}",
+                       detail=resp if isinstance(resp, str) else None), 502
+
+    status = resp.get("status")            # queued | ringing | in-progress | ended ...
+    out = {"ok": True, "status": status, "endedReason": resp.get("endedReason")}
+    if status == "ended" and invoice_id:
+        transcript = (resp.get("artifact") or {}).get("transcript") or resp.get("transcript") or ""
+        if transcript:
+            from voice_bridge import ingest_transcript
+            res = ingest_transcript(invoice_id, transcript, call_id=call_id)
+            out["captured"] = res.get("captured")
+            out["ingested"] = True
+        else:
+            out["captured"] = None
+            out["note"] = "call ended with no transcript"
+    return jsonify(out)
 
 
 @app.route("/feedback", methods=["POST"])

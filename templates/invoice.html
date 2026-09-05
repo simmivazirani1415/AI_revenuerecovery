@@ -29,8 +29,9 @@
     <div class="vb-reason">{{ voice_banner.reason }}{% if voice_demo %} <em class="vb-demo">(demo)</em>{% endif %}</div>
   </div>
   <div class="vb-right">
-    <button class="vb-btn" onclick="placeCall()"><span class="vb-ph">📞</span> Place call</button>
+    <button class="vb-btn" id="place-btn" onclick="placeCall()"><span class="vb-ph">📞</span> Place call</button>
     <div class="vb-register">{{ voice_banner.register }} register — {{ voice_banner.register_reason }}</div>
+    <div id="call-status" class="vb-status" aria-live="polite"></div>
   </div>
 </div>
 {% endif %}
@@ -117,39 +118,72 @@
 </div>
 
 {% if voice_call_ready %}
-<div id="brief-modal" class="modal-scrim" onclick="if(event.target===this)closeBrief()">
-  <div class="modal">
-    <div class="modal-head">
-      <span>Call brief generated. Paste into Vapi to place the call.</span>
-      <button class="modal-x" onclick="closeBrief()" title="Close">×</button>
-    </div>
-    <pre id="brief-text" class="brief-box"></pre>
-    <div class="modal-foot">
-      <button class="vb-btn" onclick="copyBrief(this)">Copy</button>
-      <span class="caption">The actual Vapi trigger is manual in this build.</span>
-    </div>
-  </div>
-</div>
-<script>
+<script type="module">
+  // Web call (no phone number): Vapi's server POST /call requires a number, so the
+  // browser places the call via the Web SDK (public key). The server built the
+  // brief as an assistant-model override; here we start the call, log it, and poll
+  // the server (which uses the API key) for the transcript when it ends.
   const INVOICE = "{{ inv.invoice_id }}";
-  const DEMO = {{ 'true' if voice_demo else 'false' }};
-  window.placeCall = async function () {
-    const btn = document.querySelector(".vb-btn");
-    const old = btn.textContent; btn.textContent = "Generating…"; btn.disabled = true;
+  const st = () => document.getElementById("call-status");
+  const btn = () => document.getElementById("place-btn");
+  let vapi = null, poll = null, callId = null;
+  function setStatus(t, c) { const e = st(); e.textContent = t; e.className = "vb-status " + (c || ""); }
+  async function logEvent(type, extra) {
     try {
-      const r = await fetch(`/voice/brief/${INVOICE}` + (DEMO ? "?demo=1" : ""), { method: "POST" });
+      await fetch(`/voice-event/${INVOICE}`, { method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(Object.assign({ type }, extra || {})) });
+    } catch (e) {}
+  }
+
+  window.placeCall = async function () {
+    if (poll || (vapi && callId)) return;
+    btn().disabled = true;
+    setStatus("Placing call…", "pending");
+    let cfg;
+    try {
+      const r = await fetch(`/place-call/${INVOICE}`, { method: "POST" });
+      cfg = await r.json();
+      if (!cfg.ok) {                                  // honest failure surfaced + logged
+        setStatus("Failed: " + (cfg.error || "unknown"), "err");
+        await logEvent("failed", { detail: cfg.error }); btn().disabled = false; return;
+      }
+    } catch (e) { setStatus("Error: " + e.message, "err"); btn().disabled = false; return; }
+    try {
+      const mod = await import("https://esm.sh/@vapi-ai/web@2");
+      vapi = new mod.default(cfg.publicKey);
+      vapi.on("call-end", () => finalPoll());
+      vapi.on("error", async (e) => {
+        setStatus("Call error: " + (e?.message || e), "err");
+        await logEvent("failed", { detail: (e && e.message) || String(e) }); btn().disabled = false;
+      });
+      setStatus("Connecting…", "pending");
+      const call = await vapi.start(cfg.assistantId, cfg.assistantOverrides);  // real web call
+      callId = call && call.id;
+      await logEvent("placed", { callId });
+      setStatus("Call in progress…", "pending");
+      startPoll();
+    } catch (e) {
+      setStatus("Error: " + e.message, "err");
+      await logEvent("failed", { detail: e.message }); btn().disabled = false;
+    }
+  };
+
+  function startPoll() { let n = 0; poll = setInterval(async () => { n++; await tick(); if (n > 200) stop("Timed out", "err"); }, 3000); }
+  async function finalPoll() { setStatus("Call ended — fetching transcript…", "pending"); await tick(); }
+  async function tick() {
+    if (!callId) return;
+    try {
+      const r = await fetch(`/call-status/${callId}?invoice=${INVOICE}`);
       const d = await r.json();
-      if (!d.ok) { alert("Error: " + (d.error || "unknown")); return; }
-      document.getElementById("brief-text").textContent = d.prompt;
-      document.getElementById("brief-modal").classList.add("open");
-    } catch (e) { alert("Error: " + e.message); }
-    finally { btn.textContent = old; btn.disabled = false; }
-  };
-  window.closeBrief = function () { document.getElementById("brief-modal").classList.remove("open"); };
-  window.copyBrief = function (b) {
-    navigator.clipboard.writeText(document.getElementById("brief-text").textContent)
-      .then(() => { b.textContent = "Copied"; setTimeout(() => b.textContent = "Copy", 1500); });
-  };
+      if (!d.ok) return;
+      if (d.status === "ended") {
+        const cap = d.captured ? ("promise captured: " + d.captured) : (d.note || "no promise captured");
+        stop("Completed — " + cap, "ok");
+      } else { setStatus("Call in progress… (" + (d.status || "…") + ")", "pending"); }
+    } catch (e) {}
+  }
+  function stop(t, c) { if (poll) { clearInterval(poll); poll = null; } setStatus(t, c); btn().disabled = false; }
 </script>
 {% endif %}
 {% endblock %}

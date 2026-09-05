@@ -97,7 +97,7 @@ def vapi_webhook():
         app.logger.info("vapi-webhook: no invoice_id or empty transcript; skipping")
         return ("", 200)
 
-    res = ingest_transcript(invoice_id, transcript)   # writes voice_transcript + updates promise
+    res = ingest_transcript(invoice_id, transcript, call_id=call.get("id"))
     app.logger.info("vapi-webhook: %s -> captured %s", invoice_id, res.get("captured"))
     return ("", 200)
 

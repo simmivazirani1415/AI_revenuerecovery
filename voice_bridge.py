@@ -281,12 +281,22 @@ CLOSING (important)
 # ---------------------------------------------------------------------------
 # ingest_transcript
 # ---------------------------------------------------------------------------
-def ingest_transcript(invoice_id, transcript_text):
+def ingest_transcript(invoice_id, transcript_text, call_id=None):
     conn = connect()
     try:
         inv = _load(conn, invoice_id)
         if not inv:
             raise SystemExit(f"{invoice_id} not found")
+
+        # Idempotent: if this Vapi call was already ingested, don't double-write.
+        if call_id:
+            dup = conn.execute(
+                "SELECT voice_promise_captured FROM event_log WHERE invoice_id=? "
+                "AND action_taken='voice_call' AND observed LIKE ? ORDER BY event_id DESC LIMIT 1",
+                (invoice_id, f'%"vapi_call_id": "{call_id}"%')).fetchone()
+            if dup:
+                return {"invoice_id": invoice_id, "captured": dup[0], "already_ingested": True}
+
         promise = extract_promise(transcript_text)
         captured = (f"pending {promise['date']}" if promise["promised"] and promise["date"]
                     else None)
@@ -296,7 +306,7 @@ def ingest_transcript(invoice_id, transcript_text):
                     outcome=("voice_promise_captured" if captured else "voice_no_promise"),
                     voice_transcript=transcript_text, voice_promise_captured=captured,
                     observed={"source": "vapi", "intent": promise["intent"],
-                              "date_phrase": promise["phrase"]})
+                              "date_phrase": promise["phrase"], "vapi_call_id": call_id})
 
         # Update the promise register — same effect as capturing a text promise.
         if promise["promised"] and promise["date"]:
