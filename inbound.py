@@ -17,6 +17,7 @@ from flask import Flask, request
 
 from diagnose import diagnose_one
 from log import connect, write_event
+from voice_bridge import ingest_transcript
 
 app = Flask(__name__)
 
@@ -62,6 +63,43 @@ def webhook():
         conn.close()
 
     return "<Response/>", 200, {"Content-Type": "application/xml"}
+
+
+@app.post("/vapi-webhook")
+def vapi_webhook():
+    """Vapi end-of-call-report -> ingest the transcript and close the loop.
+
+    Maps the call to an invoice via call metadata if present, else the most
+    recent voice_call_initiated event (dev: single shared assistant)."""
+    data = request.get_json(force=True, silent=True) or {}
+    msg = data.get("message", {}) or {}
+    if msg.get("type") != "end-of-call-report":
+        return ("", 204)  # ignore status-update / transcript / etc.
+
+    artifact = msg.get("artifact", {}) or {}
+    transcript = artifact.get("transcript") or msg.get("transcript") or ""
+    call = msg.get("call", {}) or {}
+    meta = call.get("metadata", {}) or msg.get("metadata", {}) or {}
+    invoice_id = meta.get("invoiceId")
+
+    conn = connect()
+    try:
+        if not invoice_id:
+            row = conn.execute(
+                "SELECT invoice_id FROM event_log WHERE stage='execute' "
+                "AND action_taken='voice_call_initiated' "
+                "ORDER BY event_id DESC LIMIT 1").fetchone()
+            invoice_id = row[0] if row else None
+    finally:
+        conn.close()
+
+    if not invoice_id or not transcript:
+        app.logger.info("vapi-webhook: no invoice_id or empty transcript; skipping")
+        return ("", 200)
+
+    res = ingest_transcript(invoice_id, transcript)   # writes voice_transcript + updates promise
+    app.logger.info("vapi-webhook: %s -> captured %s", invoice_id, res.get("captured"))
+    return ("", 200)
 
 
 if __name__ == "__main__":

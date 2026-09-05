@@ -11,10 +11,19 @@ import os
 import sqlite3
 from datetime import datetime, timezone
 
-from flask import Flask, abort, redirect, render_template, request, url_for
+from flask import Flask, abort, jsonify, redirect, render_template, request, url_for
+from dotenv import load_dotenv
 
 import execute
 from policy import FOUNDER_THRESHOLD_INR
+
+load_dotenv()  # so VAPI_* and other keys are available to the server
+
+# Voice (Vapi) key separation:
+#   PUBLIC key + assistant id  -> safe to hand the browser (Web SDK).
+#   PRIVATE key                -> server-side ONLY; never rendered to a client.
+VAPI_PUBLIC_KEY = os.environ.get("VAPI_PUBLIC_KEY", "")
+VAPI_ASSISTANT_ID = os.environ.get("VAPI_ASSISTANT_ID", "")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # On Vercel (and any serverless host) the deployment filesystem is read-only
@@ -515,6 +524,20 @@ def answer_client(conn, client, invoice, key):
 # --------------------------------------------------------------------------
 # Routes
 # --------------------------------------------------------------------------
+def _voice_reachable(conn, invoice_id):
+    """Would decide return voice_call for this invoice at the contact cap?
+    True only for voice-permitted clients whose ladder reaches rung 4. Used by
+    the demo toggle so it can't light the button where voice isn't real."""
+    from voice_bridge import _load, _latest_diagnosis
+    from decide import decide
+    from policy import CONTACT_CAP
+    inv = _load(conn, invoice_id)
+    if not inv or not inv.get("voice_permitted"):
+        return False
+    cap = CONTACT_CAP["strategic" if inv["segment"] == "strategic" else "standard"]
+    return decide(inv, _latest_diagnosis(conn, invoice_id), cap, voice_done=False)["action"] == "voice_call"
+
+
 @app.route("/invoice/<invoice_id>")
 def invoice(invoice_id):
     conn = db_ro()
@@ -528,9 +551,96 @@ def invoice(invoice_id):
         ctx.update(show_ai=True, per_client=True,
                    exchange=ai_exchange(conn, True, ctx["client"], ctx["inv"], *a),
                    suggestions=ai_suggestions(True, ctx["client"], ctx["inv"]))
+        # The live "Call client now" button appears ONLY when decide's latest
+        # recorded action for this invoice is voice_call (rung 4). Browser gets
+        # the PUBLIC key + assistant id only — never the API/private key.
+        latest = conn.execute(
+            "SELECT decision FROM event_log WHERE stage='decide' AND invoice_id=? "
+            "ORDER BY event_id DESC LIMIT 1", (invoice_id,)).fetchone()
+        real_voice = bool(latest and latest[0] == "voice_call")
+        # Demo toggle: ?voice_demo=1 (or env DEMO_VOICE_INVOICE=<id>) surfaces the
+        # button WITHOUT writing anything to the ledger — only where voice is real.
+        demo_voice = (request.args.get("voice_demo") == "1"
+                      or os.environ.get("DEMO_VOICE_INVOICE") == invoice_id)
+        keys_ok = bool(VAPI_PUBLIC_KEY and VAPI_ASSISTANT_ID)
+        voice_call_ready = keys_ok and (real_voice
+                                        or (demo_voice and _voice_reachable(conn, invoice_id)))
+        ctx.update(vapi_public_key=VAPI_PUBLIC_KEY, vapi_assistant_id=VAPI_ASSISTANT_ID,
+                   voice_call_ready=voice_call_ready,
+                   voice_demo=voice_call_ready and not real_voice)
         return render_template("invoice.html", **ctx)
     finally:
         conn.close()
+
+
+def _ngrok_url():
+    """Best-effort: the current public ngrok URL (reuse the Twilio tunnel)."""
+    import urllib.request
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:4040/api/tunnels", timeout=3) as r:
+            for t in json.loads(r.read().decode()).get("tunnels", []):
+                if t.get("proto") == "https":
+                    return t.get("public_url")
+    except Exception:
+        return None
+    return None
+
+
+@app.route("/voice/start/<invoice_id>", methods=["POST"])
+def voice_start(invoice_id):
+    """Prepare a WEB call (no phone, no telephony cost). Server-side, using the
+    Vapi API key (never sent to the browser): compose the per-invoice brief,
+    update the reusable assistant's system prompt + webhook, log a
+    voice_call_initiated event with that prompt, and hand the browser back only
+    the PUBLIC key + assistant id so it can launch the web-call widget."""
+    import urllib.request
+    api_key = os.environ.get("VAPI_API_KEY") or os.environ.get("VAPI_PRIVATE_KEY", "")
+    assistant_id = os.environ.get("VAPI_ASSISTANT_ID", "")
+    if not api_key or not assistant_id:
+        return jsonify(ok=False, error="VAPI_API_KEY / VAPI_ASSISTANT_ID not configured"), 400
+
+    from voice_bridge import build_vapi_prompt
+    from log import connect as _connect, write_event
+    try:
+        system_prompt = build_vapi_prompt(invoice_id)
+    except SystemExit as e:
+        return jsonify(ok=False, error=str(e)), 404
+
+    # Update the reusable assistant's system prompt (and point its end-of-call
+    # report at our webhook, reusing the ngrok tunnel).
+    body = {"model": {"provider": "openai", "model": "gpt-4o",
+                      "messages": [{"role": "system", "content": system_prompt}]}}
+    ngrok = _ngrok_url()
+    if ngrok:
+        body["server"] = {"url": f"{ngrok}/vapi-webhook"}
+        body["serverMessages"] = ["end-of-call-report"]
+    req = urllib.request.Request(
+        f"https://api.vapi.ai/assistant/{assistant_id}", data=json.dumps(body).encode(),
+        method="PATCH", headers={"Authorization": f"Bearer {api_key}",
+                                 "Content-Type": "application/json"})
+    warning = None
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            r.read()
+    except Exception as exc:  # call can still run on the assistant's existing prompt
+        detail = getattr(exc, "read", lambda: b"")() if hasattr(exc, "read") else b""
+        warning = f"assistant update failed: {exc} {detail.decode('utf-8','ignore')[:200]}"
+
+    # Log the initiation immediately, with the exact prompt sent.
+    conn = _connect()
+    try:
+        cid = conn.execute("SELECT client_id FROM invoices WHERE invoice_id=?",
+                           (invoice_id,)).fetchone()
+        write_event(conn, invoice_id=invoice_id, client_id=cid[0] if cid else invoice_id,
+                    stage="execute", action_taken="voice_call_initiated", channel="voice",
+                    outcome="initiated", message_sent=system_prompt,
+                    observed={"source": "vapi_web", "assistant_id": assistant_id,
+                              "webhook": f"{ngrok}/vapi-webhook" if ngrok else None})
+    finally:
+        conn.close()
+
+    return jsonify(ok=True, publicKey=VAPI_PUBLIC_KEY, assistantId=assistant_id,
+                   invoiceId=invoice_id, warning=warning)
 
 
 @app.route("/feedback", methods=["POST"])
