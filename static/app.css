@@ -442,3 +442,12 @@ body:not(.ai-open) .ai-fab{display:flex}
 .v.flag{color:var(--red-t);font-weight:600;}
 .improve{margin:8px 0 0;padding-left:18px;}
 .improve li{font-size:13px;color:var(--tsecondary);margin-bottom:5px;}
+
+/* Founder-override reason modal */
+.ovr-body{padding:16px;}
+.ovr-note{margin:0 0 10px;font-size:13px;color:var(--tsecondary);line-height:1.5;}
+.ovr-input{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--border);
+  border-radius:8px;font:inherit;font-size:13px;resize:vertical;color:var(--tprimary);background:var(--surface);}
+.ovr-input:focus{outline:none;border-color:#D97706;box-shadow:0 0 0 3px #FFF3E0;}
+.ovr-err{color:var(--red-t);font-size:12px;margin-top:6px;min-height:14px;}
+.ovr-foot{justify-content:flex-end;gap:8px;}

@@ -121,6 +121,25 @@
   </div>
 </div>
 
+<!-- Founder-override reason modal (shown when calling before the agent scheduled it) -->
+<div id="override-modal" class="modal-scrim" onclick="if(event.target===this)cancelOverride()">
+  <div class="modal">
+    <div class="modal-head"><span>Founder override — call now</span>
+      <button class="modal-x" onclick="cancelOverride()" title="Close">×</button></div>
+    <div class="ovr-body">
+      <p class="ovr-note">The agent hasn't scheduled a call for this invoice. Placing one now is a
+        founder override — give a short reason for the record.</p>
+      <textarea id="override-reason" class="ovr-input" rows="3"
+                placeholder="e.g. Client asked us to call; want it closed before quarter end"></textarea>
+      <div id="override-err" class="ovr-err"></div>
+    </div>
+    <div class="modal-foot ovr-foot">
+      <button class="vb-btn secondary" onclick="cancelOverride()">Cancel</button>
+      <button class="vb-btn" onclick="confirmOverride()"><span class="vb-ph">📞</span> Place call</button>
+    </div>
+  </div>
+</div>
+
 <!-- Draft-a-message modal (always available) -->
 <div id="draft-modal" class="modal-scrim" onclick="if(event.target===this)closeDraft()">
   <div class="modal">
@@ -165,13 +184,27 @@
     } catch (e) {}
   }
 
-  window.placeCall = async function (isOverride) {
+  window.placeCall = function (isOverride) {
     if (poll || (vapi && callId)) return;
-    override = !!isOverride; reason = null;
-    if (override) {                                 // calling early = founder override
-      reason = window.prompt("Calling before the agent scheduled it. Reason for the override:");
-      if (reason === null) return;                  // cancelled
-    }
+    if (isOverride) { openOverride(); return; }     // calling early -> ask for a reason first
+    startCall(false, null);
+  };
+  function openOverride() {
+    document.getElementById("override-reason").value = "";
+    document.getElementById("override-err").textContent = "";
+    document.getElementById("override-modal").classList.add("open");
+    setTimeout(() => document.getElementById("override-reason").focus(), 50);
+  }
+  window.cancelOverride = function () { document.getElementById("override-modal").classList.remove("open"); };
+  window.confirmOverride = function () {
+    const val = document.getElementById("override-reason").value.trim();
+    if (!val) { document.getElementById("override-err").textContent = "A reason is required for a founder override."; return; }
+    document.getElementById("override-modal").classList.remove("open");
+    startCall(true, val);
+  };
+
+  async function startCall(isOverride, reasonText) {
+    override = !!isOverride; reason = reasonText || null;
     btn().disabled = true;
     setStatus("Placing call…", "pending");
     let cfg;
